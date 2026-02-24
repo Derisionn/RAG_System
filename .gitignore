@@ -1,0 +1,37 @@
+# Virtual Environment
+rag_env/
+venv/
+.venv/
+env/
+
+# Environment Variables (SENSITIVE)
+.env
+.env.secret
+.env.local
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Data Artifacts (Generated)
+schema.json
+faiss_index/
+db_graph.pkl
+*.pkl
+
+# Logs and temp files
+*.log
+*.txt
+graph_output.txt
+graph_log.txt
+graph_log_utf8.txt
+graph_log_final.txt
+debug_log.txt
+full_error.txt
+output.txt
+result.txt
+
+# OS files
+.DS_Store
+Thumbs.db
