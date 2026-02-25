@@ -51,7 +51,7 @@ TOP_K_TABLES    = 5    # number of tables returned by semantic search
 TOP_K_COLUMNS   = 10   # number of columns returned by semantic search
 
 # ── LLM (Google Gemini) ───────────────────────────────────────────────────────
-GEMINI_MODEL    = "gemini-2.0-flash"
+GEMINI_MODEL    = "gemini-flash-latest"
 GEMINI_API_KEY  = os.environ.get("GEMINI_API_KEY", "")  # set in env
 
 # ── Agent ─────────────────────────────────────────────────────────────────────
