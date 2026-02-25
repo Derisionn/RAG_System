@@ -22,9 +22,10 @@ from config import (
     NEO4J_PWD,
     GEMINI_MODEL,
     GEMINI_API_KEY,
-    DB_CONNECTION_STRING,
+    CONNECTION_STRING,
     TOP_K_TABLES,
     TOP_K_COLUMNS,
+    MAX_RETRIES,
 )
 
 # Configure Gemini
@@ -47,7 +48,7 @@ class SQLRAGPipeline:
         self.llm = genai.GenerativeModel(GEMINI_MODEL)
 
         # 5. Initialize SQL Engine
-        self.sql_engine = create_engine(DB_CONNECTION_STRING)
+        self.sql_engine = create_engine(CONNECTION_STRING)
 
     def close(self):
         self.graph_driver.close()
@@ -164,71 +165,108 @@ CONSTRAINTS:
 SQL:"""
         return prompt
 
+    def build_correction_prompt(self, original_prompt: str, failed_sql: str, error: str):
+        """
+        STEP 4b: Correction Prompt
+        Builds a new prompt asking Gemini to fix the broken SQL using the error message.
+        """
+        return f"""
+{original_prompt}
+
+The SQL query you previously generated failed with the following error:
+
+FAILED SQL:
+{failed_sql}
+
+ERROR MESSAGE:
+{error}
+
+Please analyse the error carefully and generate a corrected T-SQL query.
+Return ONLY the raw SQL. No markdown, no explanation.
+
+CORRECTED SQL:"""
+
     def generate_sql(self, query: str):
         """
-        STEP 4: SQL Generation
-        Full pipeline: Retrieve -> Path -> Prompt -> Gemini.
+        STEP 4: SQL Generation + Self-Correction Loop
+        Full pipeline: Retrieve -> Path -> Prompt -> Gemini -> Execute -> Retry on failure.
         """
         # 1. Semantic Retrieval
         tables, columns = self.retrieve_schema_elements(query)
-        
+
         # 2. Relational Retrieval
         paths = self.get_join_paths(tables)
-        
+
         # 3. Context Assembly
         prompt = self.build_prompt(query, tables, columns, paths)
-        
-        # 4. LLM Call
-        print("\n[Step 4] Calling Gemini to generate SQL...")
+
+        # 4. First LLM Call
+        print("\n[Step 4] Calling Gemini to generate SQL (Attempt 1)...")
         response = self.llm.generate_content(prompt)
-        
-        # Clean up Markdown formatting if any
         sql = response.text.strip().replace("```sql", "").replace("```", "").strip()
-        
-        return sql
+
+        # 5. Execute + Self-Correction Loop
+        for attempt in range(1, MAX_RETRIES + 1):
+            print(f"\n[Step 5] Executing SQL (Attempt {attempt})...")
+            df, error = self.execute_sql(sql)
+
+            if error is None:
+                # ✅ Success
+                print(f"  ✅ Query succeeded on attempt {attempt}.")
+                return sql, df, None
+
+            # ❌ Failed — attempt correction if retries remain
+            if attempt < MAX_RETRIES:
+                print(f"  ⚠️  Attempt {attempt} failed. Asking Gemini to self-correct...")
+                correction_prompt = self.build_correction_prompt(prompt, sql, error)
+                response = self.llm.generate_content(correction_prompt)
+                sql = response.text.strip().replace("```sql", "").replace("```", "").strip()
+                print(f"\n[Step 4] Gemini correction (Attempt {attempt + 1}):")
+                print(sql)
+            else:
+                print(f"  ❌ All {MAX_RETRIES} attempts exhausted.")
+
+        return sql, None, error
 
     def execute_sql(self, sql: str):
         """
         STEP 5: SQL Execution
         Run the generated SQL on MSSQL and return a Pandas DataFrame.
         """
-        print(f"\n[Step 5] Executing SQL on MSSQL...")
         try:
             df = pd.read_sql(sql, self.sql_engine)
             return df, None
         except Exception as e:
-            print(f"  ❌ Execution Error: {str(e)}")
+            print(f"  ❌ Execution Error: {str(e)[:300]}")
             return None, str(e)
 
 def main():
-    # Test the FULL RAG Pipeline
+    # Test the FULL RAG Pipeline with Self-Correction
     pipeline = SQLRAGPipeline()
     try:
         test_queries = [
             "Who are the top 5 customers by sales?",
             "How many distinct products are in the inventory?"
         ]
-        
+
         for q in test_queries:
             print("\n" + "="*80)
             print(f"USER QUERY: {q}")
             print("="*80)
-            
-            # Retrieve -> Path -> Prompt -> Generate
-            sql = pipeline.generate_sql(q)
-            
-            print("\n--- GENERATED SQL ---")
+
+            # Full pipeline: Retrieve -> Generate -> Execute (with self-correction)
+            sql, results, error = pipeline.generate_sql(q)
+
+            print("\n--- FINAL SQL ---")
             print(sql)
-            
-            # Execute
-            results, error = pipeline.execute_sql(sql)
-            
+
             if error:
-                print(f"Error: {error}")
+                print(f"\n❌ Failed after {MAX_RETRIES} attempts.")
+                print(f"Last error: {error[:300]}")
             else:
                 print("\n--- QUERY RESULTS ---")
                 print(results.head())
-            
+
     finally:
         pipeline.close()
 
