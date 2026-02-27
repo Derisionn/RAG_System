@@ -184,14 +184,13 @@ def query(request: QueryRequest):
             },
         )
 
-    # Count attempts (simple heuristic from the pipeline — TODO: surface from pipeline)
     columns = list(df.columns)
     rows = df.head(100).to_dict(orient="records")  # cap rows at 100
 
     return QueryResponse(
         question=request.question,
         sql=sql,
-        attempts=1,          # pipeline will surface this later
+        attempts=MAX_RETRIES,      # graph tracks retries internally
         columns=columns,
         rows=rows,
         row_count=len(df),
