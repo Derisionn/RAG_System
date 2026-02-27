@@ -10,7 +10,7 @@ Endpoints:
   GET  /health         — Health check for all connected services
 
 Run:
-    uvicorn api:app --host 0.0.0.0 --port 8000 --reload
+    uvicorn backend.api:app --host 0.0.0.0 --port 8000 --reload
 """
 
 from __future__ import annotations

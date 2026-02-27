@@ -33,7 +33,8 @@ NEO4J_PWD   = os.getenv("NEO4J_PASSWORD", "your_password")
 TARGET_SCHEMAS = ["Sales", "Production", "HumanResources", "Purchasing", "Person"]
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
-BASE_DIR        = os.path.dirname(os.path.abspath(__file__))
+# backend/ lives one level inside the project root — point BASE_DIR at the root
+BASE_DIR        = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SCHEMA_JSON     = os.path.join(BASE_DIR, "schema.json")
 # FAISS paths are now deprecated in favor of Pinecone
 # FAISS_DIR       = os.path.join(BASE_DIR, "faiss_index")
