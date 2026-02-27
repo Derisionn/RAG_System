@@ -23,8 +23,8 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from rag_pipeline import SQLRAGPipeline
-from config import MAX_RETRIES
+from .rag_pipeline import SQLRAGPipeline
+from .config import MAX_RETRIES
 
 
 # ── Lifespan: initialize pipeline once at startup ────────────────────────────

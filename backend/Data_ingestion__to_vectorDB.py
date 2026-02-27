@@ -17,7 +17,7 @@ from pinecone import Pinecone, ServerlessSpec
 from sentence_transformers import SentenceTransformer
 from tqdm import tqdm
 
-from config import (
+from .config import (
     SCHEMA_JSON,
     EMBEDDING_MODEL,
     EMBEDDING_DIM,

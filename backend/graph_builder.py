@@ -13,7 +13,7 @@ import os
 from neo4j import GraphDatabase
 from tqdm import tqdm
 
-from config import (
+from .config import (
     SCHEMA_JSON,
     NEO4J_URI,
     NEO4J_USER,

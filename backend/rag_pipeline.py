@@ -13,7 +13,7 @@ from pinecone import Pinecone
 from neo4j import GraphDatabase
 import google.generativeai as genai
 
-from config import (
+from .config import (
     EMBEDDING_MODEL,
     PINECONE_API_KEY,
     PINECONE_INDEX,

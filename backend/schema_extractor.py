@@ -49,7 +49,7 @@ from textwrap import indent
 
 from sqlalchemy import create_engine, text
 
-from config import CONNECTION_STRING, SCHEMA_JSON, TARGET_SCHEMAS
+from .config import CONNECTION_STRING, SCHEMA_JSON, TARGET_SCHEMAS
 
 
 # ── SQL Queries ───────────────────────────────────────────────────────────────
