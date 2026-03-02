@@ -17,10 +17,10 @@ neo4j==5.26.0
 google-generativeai==0.8.3
 
 # Agentic Orchestration
-langgraph==0.2.56
-langchain-core==0.3.28
-langchain-pinecone==0.1.3
-langchain-huggingface==0.1.2
+langgraph>=0.2.56
+langchain-core>=0.3.28,<0.4
+langchain-pinecone>=0.2.0,<0.3
+langchain-huggingface>=0.1.0,<0.2
 
 # FastAPI / API Layer
 fastapi>=0.115.0
