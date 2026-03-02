@@ -24,6 +24,7 @@ db_graph.pkl
 *.log
 *.txt
 !requirements.txt
+!runtime.txt
 graph_output.txt
 graph_log.txt
 graph_log_utf8.txt
