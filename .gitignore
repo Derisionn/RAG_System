@@ -23,6 +23,7 @@ db_graph.pkl
 # Logs and temp files
 *.log
 *.txt
+!requirements.txt
 graph_output.txt
 graph_log.txt
 graph_log_utf8.txt

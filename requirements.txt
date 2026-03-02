@@ -1,0 +1,35 @@
+# Agentic Hybrid RAG System — Python Dependencies
+# Install with: pip install -r requirements.txt
+
+# Database
+sqlalchemy==2.0.36
+pymssql>=2.3.0
+
+# Vector Database
+pinecone==6.0.0
+sentence-transformers==3.3.1
+
+# Graph
+networkx==3.4.2
+neo4j==5.26.0
+
+# LLM
+google-generativeai==0.8.3
+
+# Agentic Orchestration
+langgraph>=0.2.56
+langchain-core>=0.3.28
+langchain-pinecone>=0.2.0
+langchain-huggingface>=0.1.0
+
+# FastAPI / API Layer
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+pydantic>=2.0.0
+
+# Utilities
+numpy==1.26.4
+pandas==2.2.3
+tqdm==4.67.1
+python-dotenv==1.0.1
+sqlparse>=0.5.0

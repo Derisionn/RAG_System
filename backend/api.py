@@ -15,6 +15,7 @@ Run:
 
 from __future__ import annotations
 
+import os
 import traceback
 from contextlib import asynccontextmanager
 from typing import Any
@@ -57,10 +58,13 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Allow all origins for local development (restrict in production)
+# In production set FRONTEND_URL env var (e.g. https://your-app.vercel.app)
+_FRONTEND_URL = os.getenv("FRONTEND_URL", "*")
+_CORS_ORIGINS = [_FRONTEND_URL] if _FRONTEND_URL != "*" else ["*"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_CORS_ORIGINS,
     allow_methods=["*"],
     allow_headers=["*"],
 )

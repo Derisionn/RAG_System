@@ -9,16 +9,17 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # ── Database ──────────────────────────────────────────────────────────────────
-DB_SERVER   = "laptop"                  # SQL Server instance name / hostname
-DB_NAME     = "AdventureWorks2019"
-DB_DRIVER   = "ODBC+Driver+17+for+SQL+Server"
+# In production (Render), set MSSQL_CONNECTION_STRING env var:
+#   mssql+pymssql://<user>:<pass>@<server>/<database>
+# For local dev with Windows Auth, leave MSSQL_CONNECTION_STRING unset.
 
-# Windows Integrated Auth (no username/password required)
-CONNECTION_STRING = (
-    f"mssql+pyodbc://@{DB_SERVER}/{DB_NAME}"
-    f"?driver={DB_DRIVER}"
+_LOCAL_CONNECTION_STRING = (
+    "mssql+pyodbc://@laptop/AdventureWorks2019"
+    "?driver=ODBC+Driver+17+for+SQL+Server"
     "&trusted_connection=yes"
 )
+
+CONNECTION_STRING = os.getenv("MSSQL_CONNECTION_STRING", _LOCAL_CONNECTION_STRING)
 
 # Pinecone Vector DB
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY", "your_pinecone_key")
