@@ -6,7 +6,7 @@ sqlalchemy==2.0.36
 pymssql>=2.3.0
 
 # Vector Database
-pinecone==6.0.0
+pinecone>=3.0.0
 sentence-transformers==3.3.1
 
 # Graph
@@ -18,8 +18,8 @@ google-generativeai==0.8.3
 
 # Agentic Orchestration
 langgraph>=0.2.56
-langchain-core>=0.3.28,<0.4
-langchain-pinecone>=0.2.0,<0.3
+langchain-core>=0.3.0,<0.4
+langchain-pinecone>=0.2.0
 langchain-huggingface>=0.1.0,<0.2
 
 # FastAPI / API Layer
