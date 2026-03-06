@@ -9,12 +9,13 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # ── Database ──────────────────────────────────────────────────────────────────
-# In production (Render), set MSSQL_CONNECTION_STRING env var:
+# In production (Render), MSSQL_CONNECTION_STRING env var MUST be set:
 #   mssql+pymssql://<user>:<pass>@<server>/<database>
-# For local dev with Windows Auth, leave MSSQL_CONNECTION_STRING unset.
+# For local dev with Windows Auth, set MSSQL_CONNECTION_STRING to the pyodbc URL
+# or leave unset to get a clear startup error rather than a confusing crash.
 
 _LOCAL_CONNECTION_STRING = (
-    "mssql+pyodbc://@laptop/AdventureWorks2019"
+    "mssql+pyodbc://@localhost/AdventureWorks2019"
     "?driver=ODBC+Driver+17+for+SQL+Server"
     "&trusted_connection=yes"
 )
