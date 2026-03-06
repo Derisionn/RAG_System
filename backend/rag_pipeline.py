@@ -22,8 +22,8 @@ import pandas as pd
 import sqlparse
 from typing import TypedDict, Optional
 
+import requests
 from sqlalchemy import create_engine
-from sentence_transformers import SentenceTransformer
 from pinecone import Pinecone
 from neo4j import GraphDatabase
 import google.generativeai as genai
@@ -32,6 +32,8 @@ from langgraph.graph import StateGraph, END
 
 from .config import (
     EMBEDDING_MODEL,
+    HF_API_TOKEN,
+    HF_API_URL,
     PINECONE_API_KEY,
     PINECONE_INDEX,
     NEO4J_URI,
@@ -77,30 +79,49 @@ class SQLRAGPipeline:
     def __init__(self):
         print("Initializing Retrieval Engine (Pinecone + Neo4j + LangGraph)...")
 
-        # 1. Embedding model
-        self.model = SentenceTransformer(EMBEDDING_MODEL)
-
-        # 2. Pinecone
+        # 1. Pinecone  (no local embedding model — Gemini API used at query time)
         self.pc = Pinecone(api_key=PINECONE_API_KEY)
         self.vector_index = self.pc.Index(PINECONE_INDEX)
 
-        # 3. Neo4j
+        # 2. Neo4j
         self.graph_driver = GraphDatabase.driver(
             NEO4J_URI, auth=(NEO4J_USER, NEO4J_PWD)
         )
 
-        # 4. Gemini
+        # 3. Gemini  (single client used for both embeddings + generation)
         self.llm = genai.GenerativeModel(GEMINI_MODEL)
 
-        # 5. SQL engine
+        # 4. SQL engine
         self.sql_engine = create_engine(CONNECTION_STRING)
 
-        # 6. Build and compile the LangGraph agent
+        # 5. Build and compile the LangGraph agent
         self.agent = self._build_graph()
         print("LangGraph agent compiled ✅")
 
     def close(self):
         self.graph_driver.close()
+
+    # ── Embedding helper ───────────────────────────────────────────────────
+
+    def _embed(self, text: str) -> list[float]:
+        """
+        Embed a single string via HuggingFace Inference API.
+        Uses the same all-MiniLM-L6-v2 model as the Pinecone index — no local torch.
+        """
+        headers = {"Authorization": f"Bearer {HF_API_TOKEN}"} if HF_API_TOKEN else {}
+        resp = requests.post(
+            HF_API_URL,
+            headers=headers,
+            json={"inputs": text, "options": {"wait_for_model": True}},
+            timeout=30,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        # HF feature-extraction returns: list[list[float]] (one vector per input)
+        # For a single string input it returns a single list[float]
+        if isinstance(data[0], list):
+            return data[0]  # nested: [[0.1, 0.2, ...]]
+        return data           # flat: [0.1, 0.2, ...]
 
     # ── Graph nodes ───────────────────────────────────────────────────────────
 
@@ -110,10 +131,10 @@ class SQLRAGPipeline:
         Semantic search via Pinecone + join-path search via Neo4j.
         """
         question = state["question"]
-        print(f"\n[Node: retrieve] Embedding query: '{question}'")
+        print(f"\n[Node: retrieve] Embedding query via HF API: '{question}'")
 
-        # Semantic retrieval
-        query_vec = self.model.encode([question]).tolist()[0]
+        # Semantic retrieval — embed via HuggingFace Inference API (no local model)
+        query_vec = self._embed(question)
         results = self.vector_index.query(
             vector=query_vec, top_k=20, include_metadata=True
         )

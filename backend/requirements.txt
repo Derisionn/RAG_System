@@ -7,7 +7,7 @@ pymssql>=2.3.0
 
 # Vector Database
 pinecone==6.0.0
-sentence-transformers==3.3.1
+# sentence-transformers removed — embeddings now use Gemini API (zero RAM overhead)
 
 # Graph
 networkx==3.4.2

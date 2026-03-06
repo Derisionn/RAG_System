@@ -2,8 +2,10 @@
 Data_ingestion__to_vectorDB.py
 ──────────────────────────────
 Loads schema.json produced by schema_extractor.py, converts every table and
-column into a rich textual description, and upserts them to Pinecone using
-LangChain's PineconeVectorStore + HuggingFaceEmbeddings.
+column into a rich textual description, and upserts them to Pinecone.
+
+Embeddings are generated via the HuggingFace Inference API
+(sentence-transformers/all-MiniLM-L6-v2, 384-dim) — no local torch/model needed.
 
 Run:
     python -m backend.Data_ingestion__to_vectorDB
@@ -17,9 +19,7 @@ import json
 import os
 import time
 
-from langchain_core.documents import Document
-from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_pinecone import PineconeVectorStore
+import requests
 from pinecone import Pinecone, ServerlessSpec
 from tqdm import tqdm
 
@@ -27,6 +27,8 @@ from .config import (
     SCHEMA_JSON,
     EMBEDDING_MODEL,
     EMBEDDING_DIM,
+    HF_API_TOKEN,
+    HF_API_URL,
     PINECONE_API_KEY,
     PINECONE_INDEX,
 )
@@ -45,15 +47,16 @@ def load_schema(path: str) -> dict:
         return json.load(f)
 
 
-# ── 2. Build LangChain Documents ──────────────────────────────────────────────
+# ── 2. Build documents ────────────────────────────────────────────────────────
 
-def build_documents(schema: dict) -> list[Document]:
+def build_documents(schema: dict) -> list[dict]:
     """
-    Convert each table and column into a LangChain Document.
-    page_content  → the text that gets embedded
-    metadata      → stored alongside the vector in Pinecone
+    Convert each table and column into a dict with:
+      text     → the string to embed
+      metadata → stored alongside the vector in Pinecone
+      doc_id   → unique vector ID
     """
-    docs: list[Document] = []
+    docs: list[dict] = []
 
     for full_table, meta in schema["tables"].items():
         schema_name, table_name = full_table.split(".")
@@ -70,18 +73,18 @@ def build_documents(schema: dict) -> list[Document]:
             f"Columns: {col_summary}. "
             f"Primary keys: {', '.join(pk_cols) or 'none'}."
         )
-        docs.append(Document(
-            page_content=table_text,
-            metadata={
+        docs.append({
+            "text":    table_text,
+            "doc_id":  f"table_{full_table}",
+            "metadata": {
                 "type":      "table",
                 "schema":    schema_name,
                 "table":     full_table,
                 "column":    "",
                 "data_type": "",
                 "text":      table_text,
-                "doc_id":    f"table_{full_table}",
             }
-        ))
+        })
 
         # ── Column-level documents ────────────────────────────────────────────
         for col in columns:
@@ -93,23 +96,43 @@ def build_documents(schema: dict) -> list[Document]:
                 + ("This is a primary key column. " if is_pk else "")
                 + f"Table schema: {schema_name}."
             )
-            docs.append(Document(
-                page_content=col_text,
-                metadata={
+            docs.append({
+                "text":    col_text,
+                "doc_id":  f"col_{full_table}_{col['name']}",
+                "metadata": {
                     "type":      "column",
                     "schema":    schema_name,
                     "table":     full_table,
                     "column":    col["name"],
                     "data_type": col["data_type"],
                     "text":      col_text,
-                    "doc_id":    f"col_{full_table}_{col['name']}",
                 }
-            ))
+            })
 
     return docs
 
 
-# ── 3. Ensure Pinecone index exists ───────────────────────────────────────────
+# ── 3. HF Inference API embedding ─────────────────────────────────────────────
+
+def embed_batch(texts: list[str]) -> list[list[float]]:
+    """
+    Embed a batch of texts using HuggingFace Inference API.
+    Returns list of 384-dim float vectors (same model as Pinecone index).
+    """
+    headers = {"Authorization": f"Bearer {HF_API_TOKEN}"} if HF_API_TOKEN else {}
+    resp = requests.post(
+        HF_API_URL,
+        headers=headers,
+        json={"inputs": texts, "options": {"wait_for_model": True}},
+        timeout=60,
+    )
+    resp.raise_for_status()
+    data = resp.json()
+    # HF feature-extraction for a list input returns list[list[float]]
+    return data
+
+
+# ── 4. Ensure Pinecone index exists ───────────────────────────────────────────
 
 def ensure_index(pc: Pinecone) -> None:
     """Create the Pinecone index if it doesn't already exist."""
@@ -118,7 +141,7 @@ def ensure_index(pc: Pinecone) -> None:
         print(f"  Index '{PINECONE_INDEX}' already exists — reusing.")
         return
 
-    print(f"  Creating index '{PINECONE_INDEX}'...")
+    print(f"  Creating index '{PINECONE_INDEX}' (dim={EMBEDDING_DIM}, metric=cosine)...")
     pc.create_index(
         name=PINECONE_INDEX,
         dimension=EMBEDDING_DIM,
@@ -127,36 +150,33 @@ def ensure_index(pc: Pinecone) -> None:
     )
     while not pc.describe_index(PINECONE_INDEX).status["ready"]:
         time.sleep(1)
-    print(f"  Index '{PINECONE_INDEX}' ready.")
+    print(f"  Index '{PINECONE_INDEX}' ready ✅")
 
 
-# ── 4. Upsert via LangChain ───────────────────────────────────────────────────
+# ── 5. Upsert ─────────────────────────────────────────────────────────────────
 
-def upsert_documents(docs: list[Document]) -> None:
-    """
-    Embed all documents with HuggingFaceEmbeddings and upsert to Pinecone
-    using LangChain's PineconeVectorStore — no manual batching required.
-    """
-    print(f"\nLoading embedding model '{EMBEDDING_MODEL}'...")
-    embeddings = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
+def upsert_documents(docs: list[dict]) -> None:
+    """Embed all documents via HF API and upsert to Pinecone in batches."""
+    print(f"\nEmbedding model : {EMBEDDING_MODEL} (via HuggingFace Inference API)")
+    print(f"Vector dimension: {EMBEDDING_DIM}")
 
-    print(f"Initialising Pinecone...")
     pc = Pinecone(api_key=PINECONE_API_KEY)
     ensure_index(pc)
+    index = pc.Index(PINECONE_INDEX)
 
     print(f"Upserting {len(docs)} documents to '{PINECONE_INDEX}'...")
 
-    # LangChain handles batching + embedding + upsert automatically
-    batch_size = 50
+    batch_size = 32  # conservative for HF free-tier rate limits
     for i in tqdm(range(0, len(docs), batch_size), desc="Upserting batches"):
-        batch = docs[i : i + batch_size]
-        ids   = [doc.metadata["doc_id"] for doc in batch]
-        PineconeVectorStore.from_documents(
-            batch,
-            embeddings,
-            index_name=PINECONE_INDEX,
-            ids=ids,
-        )
+        batch  = docs[i : i + batch_size]
+        texts  = [d["text"] for d in batch]
+        vecs   = embed_batch(texts)
+
+        vectors = [
+            {"id": d["doc_id"], "values": v, "metadata": d["metadata"]}
+            for d, v in zip(batch, vecs)
+        ]
+        index.upsert(vectors=vectors)
 
     print(f"\n✅  Successfully upserted {len(docs)} documents to Pinecone.")
 
@@ -165,7 +185,7 @@ def upsert_documents(docs: list[Document]) -> None:
 
 def main() -> None:
     print("=" * 60)
-    print(" Agentic Hybrid RAG — LangChain Pinecone Ingestion")
+    print(" Agentic Hybrid RAG — HF Inference API Ingestion")
     print("=" * 60)
 
     schema = load_schema(SCHEMA_JSON)

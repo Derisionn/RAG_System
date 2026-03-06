@@ -45,8 +45,12 @@ SCHEMA_JSON     = os.path.join(BASE_DIR, "schema.json")
 GRAPH_PKL       = os.path.join(BASE_DIR, "db_graph.pkl")
 
 # ── Embedding Model ───────────────────────────────────────────────────────────
-EMBEDDING_MODEL = "all-MiniLM-L6-v2"   # sentence-transformers model
-EMBEDDING_DIM   = 384                   # dimension for all-MiniLM-L6-v2
+# Using HuggingFace Inference API — same model as the Pinecone index, zero local torch.
+EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"  # HF model ID
+EMBEDDING_DIM   = 384                                        # output dimension
+HF_API_TOKEN    = os.getenv("HF_API_TOKEN", "")              # set in Render env vars
+HF_API_URL      = f"https://router.huggingface.co/hf-inference/models/{EMBEDDING_MODEL}/pipeline/feature-extraction"
+
 
 # ── Retrieval ─────────────────────────────────────────────────────────────────
 TOP_K_TABLES    = 5    # number of tables returned by semantic search
