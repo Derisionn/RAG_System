@@ -83,10 +83,8 @@ class SQLRAGPipeline:
         self.pc = Pinecone(api_key=PINECONE_API_KEY)
         self.vector_index = self.pc.Index(PINECONE_INDEX)
 
-        # 2. Neo4j
-        self.graph_driver = GraphDatabase.driver(
-            NEO4J_URI, auth=(NEO4J_USER, NEO4J_PWD)
-        )
+        # 2. Neo4j — short connection lifetime prevents stale sessions on Render
+        self.graph_driver = self._make_neo4j_driver()
 
         # 3. Gemini  (single client used for both embeddings + generation)
         self.llm = genai.GenerativeModel(GEMINI_MODEL)
@@ -98,6 +96,16 @@ class SQLRAGPipeline:
         self.agent = self._build_graph()
         self.last_attempts = 0  # tracks actual attempts used in last generate_sql call
         print("LangGraph agent compiled ✅")
+
+    def _make_neo4j_driver(self):
+        """Create a Neo4j driver with pool settings that avoid stale connections."""
+        return GraphDatabase.driver(
+            NEO4J_URI,
+            auth=(NEO4J_USER, NEO4J_PWD),
+            max_connection_lifetime=200,      # recycle before AuraDB closes them (~300s)
+            max_connection_pool_size=5,
+            connection_acquisition_timeout=30,
+        )
 
     def close(self):
         self.graph_driver.close()
@@ -166,19 +174,37 @@ class SQLRAGPipeline:
         RETURN [node in nodes(p) | node.name] AS path_nodes
         """
         if len(tables_list) >= 2:
-            with self.graph_driver.session() as session:
-                for i in range(len(tables_list)):
-                    for j in range(i + 1, len(tables_list)):
-                        result = session.run(
-                            cypher,
-                            start_node=tables_list[i],
-                            end_node=tables_list[j],
-                        )
-                        for record in result:
-                            path = record["path_nodes"]
-                            if path and len(path) > 1:
-                                paths.append(path)
-                                print(f"  ▸ Path: {' -> '.join(path)}")
+            try:
+                with self.graph_driver.session() as session:
+                    for i in range(len(tables_list)):
+                        for j in range(i + 1, len(tables_list)):
+                            result = session.run(
+                                cypher,
+                                start_node=tables_list[i],
+                                end_node=tables_list[j],
+                            )
+                            for record in result:
+                                path = record["path_nodes"]
+                                if path and len(path) > 1:
+                                    paths.append(path)
+                                    print(f"  ▸ Path: {' -> '.join(path)}")
+            except Exception as e:
+                print(f"  ⚠️ Neo4j session error ({type(e).__name__}): {e}. Recreating driver and retrying...")
+                self.graph_driver.close()
+                self.graph_driver = self._make_neo4j_driver()
+                with self.graph_driver.session() as session:
+                    for i in range(len(tables_list)):
+                        for j in range(i + 1, len(tables_list)):
+                            result = session.run(
+                                cypher,
+                                start_node=tables_list[i],
+                                end_node=tables_list[j],
+                            )
+                            for record in result:
+                                path = record["path_nodes"]
+                                if path and len(path) > 1:
+                                    paths.append(path)
+                                    print(f"  ▸ Path: {' -> '.join(path)}")
 
         return {**state, "tables": tables_list, "columns": columns, "paths": paths}
 
