@@ -4,6 +4,7 @@
 # Database
 sqlalchemy==2.0.36
 pymssql>=2.3.0
+pyodbc
 
 # Vector Database
 pinecone==6.0.0
