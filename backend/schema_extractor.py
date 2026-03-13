@@ -176,7 +176,7 @@ def extract_schema(connection_string: str, target_schemas: list[str]) -> dict:
     schemas_tuple = tuple(target_schemas)
 
     print(f"Connecting to database …")
-    engine = create_engine(connection_string, fast_executemany=True)
+    engine = create_engine(connection_string)
 
     with engine.connect() as conn:
         print("  ▸ Extracting columns …")

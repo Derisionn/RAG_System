@@ -194,7 +194,7 @@ def query(request: QueryRequest):
     return QueryResponse(
         question=request.question,
         sql=sql,
-        attempts=MAX_RETRIES,      # graph tracks retries internally
+        attempts=pipeline.last_attempts,   # actual attempts used
         columns=columns,
         rows=rows,
         row_count=len(df),

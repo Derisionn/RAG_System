@@ -96,6 +96,7 @@ class SQLRAGPipeline:
 
         # 5. Build and compile the LangGraph agent
         self.agent = self._build_graph()
+        self.last_attempts = 0  # tracks actual attempts used in last generate_sql call
         print("LangGraph agent compiled ✅")
 
     def close(self):
@@ -349,6 +350,7 @@ class SQLRAGPipeline:
         sql = final_state.get("sql", "")
         result = final_state.get("result", None)
         error = final_state.get("error") or final_state.get("validation_error")
+        self.last_attempts = final_state.get("attempts", 0)  # store for api.py
 
         return sql, result, error
 
@@ -365,20 +367,14 @@ class SQLRAGPipeline:
         state = self._node_retrieve(state)
         return state["tables"], state["columns"]
 
-    def get_join_paths(self, tables: list[str]):
-        """Return join paths for a list of tables (for /query/sql-only endpoint)."""
-        state: AgentState = {
-            "question": "", "tables": tables, "columns": [], "paths": [],
-            "prompt": "", "sql": "", "error": None,
-            "result": None, "attempts": 0, "validation_error": None,
-        }
-        # Re-use retrieval node just for the path part
+    def _find_join_paths(self, tables: list[str]) -> list[list[str]]:
+        """Shared helper — find shortest join paths between all table pairs via Neo4j."""
         cypher = """
         MATCH (a:Table {name: $start_node}), (b:Table {name: $end_node})
         MATCH p = shortestPath((a)-[:REFERENCES*..3]-(b))
         RETURN [node in nodes(p) | node.name] AS path_nodes
         """
-        paths = []
+        paths: list[list[str]] = []
         if len(tables) >= 2:
             with self.graph_driver.session() as session:
                 for i in range(len(tables)):
@@ -389,6 +385,10 @@ class SQLRAGPipeline:
                             if path and len(path) > 1:
                                 paths.append(path)
         return paths
+
+    def get_join_paths(self, tables: list[str]) -> list[list[str]]:
+        """Return join paths for a list of tables (for /query/sql-only endpoint)."""
+        return self._find_join_paths(tables)
 
     def build_prompt(self, query: str, tables: list[str], columns: list[dict], paths: list[list[str]]):
         """Build the SQL generation prompt (for /query/sql-only endpoint)."""
