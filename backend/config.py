@@ -10,17 +10,14 @@ load_dotenv()
 
 # ── Database ──────────────────────────────────────────────────────────────────
 # In production (Render), MSSQL_CONNECTION_STRING env var MUST be set:
-#   mssql+pymssql://<user>:<pass>@<server>/<database>
-# For local dev with Windows Auth, set MSSQL_CONNECTION_STRING to the pyodbc URL
-# or leave unset to get a clear startup error rather than a confusing crash.
+#   mssql+pymssql://<user>:<pass>@<server>.database.windows.net/<database>
+# For local Windows dev, override with a pyodbc URL in your .env file.
 
-_LOCAL_CONNECTION_STRING = (
-    "mssql+pyodbc://@localhost/AdventureWorks2019"
-    "?driver=ODBC+Driver+17+for+SQL+Server"
-    "&trusted_connection=yes"
+_FALLBACK_CONNECTION_STRING = (
+    "mssql+pymssql://localhost/AdventureWorks2019"  # will fail gracefully, not on import
 )
 
-CONNECTION_STRING = os.getenv("MSSQL_CONNECTION_STRING", _LOCAL_CONNECTION_STRING)
+CONNECTION_STRING = os.getenv("MSSQL_CONNECTION_STRING", _FALLBACK_CONNECTION_STRING)
 
 # Pinecone Vector DB
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY", "your_pinecone_key")
