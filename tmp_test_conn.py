@@ -1,6 +1,6 @@
 import sqlalchemy
 
-cs = "mssql+pymssql://sqladmin:12345%40Hv@rag-sql-server.database.windows.net/AdventureWorks2019"
+cs = "mssql+pymssql://sqladmin:12345%40Hv@rag-sql-server.database.windows.net/AdvebtureWorks"
 engine = sqlalchemy.create_engine(cs, connect_args={"timeout": 30})
 
 with engine.connect() as conn:
