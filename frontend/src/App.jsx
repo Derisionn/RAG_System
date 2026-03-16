@@ -4,6 +4,10 @@ import ChatHeader from './components/ChatHeader'
 import MessageList from './components/MessageList'
 import InputBar from './components/InputBar'
 
+// In production (Vercel), set VITE_BACKEND_URL to your Render backend URL.
+// Locally, leave it unset — Vite's dev proxy handles /query and /health.
+const API_BASE = import.meta.env.VITE_BACKEND_URL || ''
+
 const SUGGESTIONS = [
   'Who are the top 5 customers by total sales?',
   'How many distinct products are in the inventory?',
@@ -24,7 +28,7 @@ export default function App() {
 
   // Check API health on mount
   useEffect(() => {
-    fetch('/health')
+    fetch(`${API_BASE}/health`)
       .then(r => r.ok ? r.json() : Promise.reject())
       .then(d => setApiStatus(d.status === 'healthy' ? 'online' : 'degraded'))
       .catch(() => setApiStatus('offline'))
@@ -50,7 +54,7 @@ export default function App() {
     setLoading(true)
 
     try {
-      const res = await fetch('/query', {
+      const res = await fetch(`${API_BASE}/query`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ question }),
