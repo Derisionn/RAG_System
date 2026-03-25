@@ -105,10 +105,11 @@ Standard RAG systems often fail on Text-to-SQL because they lack "relational awa
    ```
 
 ## 📸 Screenshots
-![SQL RAG Query Assistant - Main Interface](./screenshots/image.png)
-*Initial Natural Language Query interface.*
 
 ![SQL RAG Query Assistant - SQL Generation & Execution](./screenshots/image%20copy.png)
+*Initial Natural Language Query interface.*
+
+![SQL RAG Query Assistant - Main Interface](./screenshots/image.png)
 *Self-healing SQL generation and data execution in action.*
 
 ---
