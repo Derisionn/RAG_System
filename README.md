@@ -10,7 +10,7 @@
 
 ---
 
-### 🚀 [Live Demo](https://rag-system2.vercel.app/) | [Demo Video (Optional)](#)
+### 🚀 [Live Demo](https://rag-system2.vercel.app/)
 
 ---
 
@@ -112,4 +112,3 @@ Standard RAG systems often fail on Text-to-SQL because they lack "relational awa
 *Self-healing SQL generation and data execution in action.*
 
 ---
-**Developed by Harsh Vardhan** - Optimized for Machine Learning & Software Engineering roles.
