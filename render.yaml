@@ -2,13 +2,11 @@ services:
   - type: web
     name: sql-rag-backend
     runtime: python
-    buildCommand: pip install -r backend/requirements.txt && pip install uvicorn
-    startCommand: uvicorn main:app --host 0.0.0.0 --port 8000
+    buildCommand: pip install -r backend/requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.9
-      - key: PORT
-        value: "8000"
       - key: MSSQL_CONNECTION_STRING
         sync: false
       - key: PINECONE_API_KEY
