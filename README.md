@@ -27,15 +27,15 @@ The system is built as a **State-Graph Agent** that iterates until a valid resul
 
 ```mermaid
 graph TD
-    A[User Query] --> B[Retrieve]
-    B -->|Pinecone| C[Semantic Schema Discovery]
-    B -->|Neo4j| D[Join Path Discovery]
-    C & D --> E[Generate SQL (Gemini-1.5-Flash)]
-    E --> F[Validate SQL (Safety & Syntax)]
-    F -->|Invalid| E
-    F -->|Valid| G[Execute SQL (MSSQL)]
-    G -->|Error| E
-    G -->|Success| H[Result DataFrame]
+    A["User Query"] --> B["Retrieve"]
+    B -->|"Pinecone"| C["Semantic Schema Discovery"]
+    B -->|"Neo4j"| D["Join Path Discovery"]
+    C & D --> E["Generate SQL (Gemini-1.5-Flash)"]
+    E --> F["Validate SQL (Safety & Syntax)"]
+    F -->|"Invalid"| E
+    F -->|"Valid"| G["Execute SQL (MSSQL)"]
+    G -->|"Error"| E
+    G -->|"Success"| H["Result DataFrame"]
 ```
 
 ## 🔍 Hybrid Retrieval Approach
