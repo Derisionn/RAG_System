@@ -105,11 +105,11 @@ Standard RAG systems often fail on Text-to-SQL because they lack "relational awa
    ```
 
 ## 📸 Screenshots
-![SQL RAG Query Assistant - Querying top 5 customers](file:///C:/Users/harsh/.gemini/antigravity/brain/1a5d7fe4-2f4a-42cc-b107-0a5e7fa23c61/media__1774468199539.png)
+![SQL RAG Query Assistant - Main Interface](./screenshots/image.png)
 *Initial Natural Language Query interface.*
 
-![SQL RAG Query Assistant - Querying products and employees](file:///C:/Users/harsh/.gemini/antigravity/brain/1a5d7fe4-2f4a-42cc-b107-0a5e7fa23c61/media__1774468204112.png)
-*Self-healing SQL generation in action.*
+![SQL RAG Query Assistant - SQL Generation & Execution](./screenshots/image%20copy.png)
+*Self-healing SQL generation and data execution in action.*
 
 ---
 **Developed by Harsh Vardhan** - Optimized for Machine Learning & Software Engineering roles.
