@@ -51,7 +51,7 @@ app = FastAPI(
     title="SQL RAG System API",
     description=(
         "Agentic Hybrid RAG system that converts natural language questions "
-        "into T-SQL queries for the AdventureWorks2019 database, executes them, "
+        "into PostgreSQL queries for a Supabase database, executes them, "
         "and returns the results — with automatic self-correction on failure."
     ),
     version="1.0.0",
@@ -75,7 +75,7 @@ class QueryRequest(BaseModel):
     question: str = Field(
         ...,
         example="Who are the top 5 customers by total sales amount?",
-        description="Natural language question about the AdventureWorks database.",
+        description="Natural language question about the Supabase database.",
     )
 
 
@@ -97,7 +97,7 @@ class HealthResponse(BaseModel):
     status: str
     pinecone: str
     neo4j: str
-    mssql: str
+    supabase: str
     gemini: str
 
 
@@ -106,12 +106,12 @@ class HealthResponse(BaseModel):
 def health_check():
     """
     Check connectivity to all backend services:
-    Pinecone, Neo4j, MSSQL, and Gemini.
+    Pinecone, Neo4j, Supabase, and Gemini.
     """
     results: dict[str, str] = {
         "pinecone": "unknown",
         "neo4j": "unknown",
-        "mssql": "unknown",
+        "supabase": "unknown",
         "gemini": "unknown",
     }
 
@@ -130,14 +130,14 @@ def health_check():
     except Exception as e:
         results["neo4j"] = f"error: {str(e)[:120]}"
 
-    # MSSQL
+    # Supabase (PostgreSQL)
     try:
         with pipeline.sql_engine.connect() as conn:
             from sqlalchemy import text
             conn.execute(text("SELECT 1"))
-        results["mssql"] = "ok"
+        results["supabase"] = "ok"
     except Exception as e:
-        results["mssql"] = f"error: {str(e)[:120]}"
+        results["supabase"] = f"error: {str(e)[:120]}"
 
     # Gemini
     try:
@@ -163,7 +163,7 @@ def query(request: QueryRequest):
     2. Join-path retrieval from Neo4j
     3. Prompt assembly
     4. SQL generation via Gemini (with self-correction, up to MAX_RETRIES)
-    5. SQL execution on MSSQL
+    5. SQL execution on Supabase
 
     Returns the generated SQL, result rows, and number of attempts used.
     """

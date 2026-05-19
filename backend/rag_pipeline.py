@@ -7,7 +7,7 @@ Graph nodes:
   retrieve      → Semantic (Pinecone) + Relational (Neo4j) retrieval
   generate_sql  → Gemini LLM generates or corrects SQL
   validate_sql  → Safety + syntax pre-check (SELECT-only, sqlparse)
-  execute_sql   → Run SQL on MSSQL via SQLAlchemy
+  execute_sql   → Run SQL on Supabase via SQLAlchemy
 
 Flow:
   START → retrieve → generate_sql → validate_sql ──→ execute_sql → END
@@ -132,6 +132,25 @@ class SQLRAGPipeline:
             return data[0]  # nested: [[0.1, 0.2, ...]]
         return data           # flat: [0.1, 0.2, ...]
 
+    def _call_llm_with_retry(self, prompt: str, max_retries: int = 5) -> str:
+        """Call Gemini LLM with exponential backoff on ResourceExhausted (429) rate limit."""
+        import time
+        from google.api_core.exceptions import ResourceExhausted
+        
+        delay = 2.0
+        for attempt in range(max_retries):
+            try:
+                response = self.llm.generate_content(prompt)
+                return response.text
+            except ResourceExhausted as e:
+                if attempt == max_retries - 1:
+                    raise e
+                print(f"  ⚠️ Gemini Rate Limit Exceeded (429). Retrying in {delay}s...")
+                time.sleep(delay)
+                delay *= 2
+            except Exception as e:
+                raise e
+
     # ── Graph nodes ───────────────────────────────────────────────────────────
 
     def _node_retrieve(self, state: AgentState) -> AgentState:
@@ -190,21 +209,27 @@ class SQLRAGPipeline:
                                     print(f"  ▸ Path: {' -> '.join(path)}")
             except Exception as e:
                 print(f"  ⚠️ Neo4j session error ({type(e).__name__}): {e}. Recreating driver and retrying...")
-                self.graph_driver.close()
-                self.graph_driver = self._make_neo4j_driver()
-                with self.graph_driver.session() as session:
-                    for i in range(len(tables_list)):
-                        for j in range(i + 1, len(tables_list)):
-                            result = session.run(
-                                cypher,
-                                start_node=tables_list[i],
-                                end_node=tables_list[j],
-                            )
-                            for record in result:
-                                path = record["path_nodes"]
-                                if path and len(path) > 1:
-                                    paths.append(path)
-                                    print(f"  ▸ Path: {' -> '.join(path)}")
+                try:
+                    self.graph_driver.close()
+                except Exception:
+                    pass
+                try:
+                    self.graph_driver = self._make_neo4j_driver()
+                    with self.graph_driver.session() as session:
+                        for i in range(len(tables_list)):
+                            for j in range(i + 1, len(tables_list)):
+                                result = session.run(
+                                    cypher,
+                                    start_node=tables_list[i],
+                                    end_node=tables_list[j],
+                                )
+                                for record in result:
+                                    path = record["path_nodes"]
+                                    if path and len(path) > 1:
+                                        paths.append(path)
+                                        print(f"  ▸ Path: {' -> '.join(path)}")
+                except Exception as inner_e:
+                    print(f"  ❌ Graceful degradation: Neo4j retry also failed: {inner_e}. Proceeding without join paths.")
 
         return {**state, "tables": tables_list, "columns": columns, "paths": paths}
 
@@ -228,8 +253,8 @@ class SQLRAGPipeline:
                 state["prompt"], state["sql"], state["error"] or state["validation_error"] or ""
             )
 
-        response = self.llm.generate_content(prompt)
-        sql = response.text.strip().replace("```sql", "").replace("```", "").strip()
+        response_text = self._call_llm_with_retry(prompt)
+        sql = response_text.strip().replace("```sql", "").replace("```", "").strip()
         print(f"  ▸ SQL generated:\n{sql[:300]}")
 
         return {
@@ -278,10 +303,10 @@ class SQLRAGPipeline:
     def _node_execute_sql(self, state: AgentState) -> AgentState:
         """
         Node 4 — Execute SQL
-        Runs the validated SQL on MSSQL and returns a DataFrame.
+        Runs the validated SQL on Supabase and returns a DataFrame.
         """
         sql = state["sql"]
-        print(f"\n[Node: execute_sql] Running SQL on MSSQL...")
+        print(f"\n[Node: execute_sql] Running SQL on Supabase...")
         try:
             df = pd.read_sql(sql, self.sql_engine)
             print(f"  ✅ Query succeeded — {len(df)} rows returned.")
@@ -402,14 +427,17 @@ class SQLRAGPipeline:
         """
         paths: list[list[str]] = []
         if len(tables) >= 2:
-            with self.graph_driver.session() as session:
-                for i in range(len(tables)):
-                    for j in range(i + 1, len(tables)):
-                        result = session.run(cypher, start_node=tables[i], end_node=tables[j])
-                        for record in result:
-                            path = record["path_nodes"]
-                            if path and len(path) > 1:
-                                paths.append(path)
+            try:
+                with self.graph_driver.session() as session:
+                    for i in range(len(tables)):
+                        for j in range(i + 1, len(tables)):
+                            result = session.run(cypher, start_node=tables[i], end_node=tables[j])
+                            for record in result:
+                                path = record["path_nodes"]
+                                if path and len(path) > 1:
+                                    paths.append(path)
+            except Exception as e:
+                print(f"  ⚠️ Warning: Failed to retrieve join paths from Neo4j in _find_join_paths: {e}. Proceeding without paths.")
         return paths
 
     def get_join_paths(self, tables: list[str]) -> list[list[str]]:
@@ -439,8 +467,8 @@ class SQLRAGPipeline:
             context_joins += "- No direct relationship found. Use common sense joins if needed.\n"
 
         return f"""
-You are an expert SQL Generator for a Microsoft SQL Server database (AdventureWorks2019).
-Given the user's natural language question, the relevant schema elements, and suggested join paths, generate a valid T-SQL query.
+You are an expert SQL Generator for a Supabase (PostgreSQL) database.
+Given the user's natural language question, the relevant schema elements, and suggested join paths, generate a valid PostgreSQL query.
 
 {context_schema}
 {context_joins}
@@ -449,10 +477,10 @@ USER QUESTION: "{query}"
 
 CONSTRAINTS:
 1. Return ONLY the raw SQL code. No markdown formatting (no ```sql), no explanations.
-2. Use fully qualified table names (Schema.Table).
+2. Use fully qualified table names (schema.table) or simple table names as appropriate for the schemas retrieved.
 3. Use JOINs based on the suggested paths where possible.
 4. If a join path is A -> B -> C, use: FROM A JOIN B ON ... JOIN C ON ...
-5. Use TOP for limiting results if appropriate.
+5. Use LIMIT for limiting results if appropriate (DO NOT use TOP).
 6. Only generate SELECT statements.
 
 SQL:"""
@@ -469,7 +497,7 @@ FAILED SQL:
 ERROR MESSAGE:
 {error}
 
-Please analyse the error carefully and generate a corrected T-SQL SELECT query.
+Please analyse the error carefully and generate a corrected PostgreSQL SELECT query.
 Return ONLY the raw SQL. No markdown, no explanation.
 
 CORRECTED SQL:"""

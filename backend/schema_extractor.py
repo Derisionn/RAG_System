@@ -75,9 +75,9 @@ ORDER BY
 
 _PK_SQL = """
 SELECT
-    tc.TABLE_SCHEMA,
-    tc.TABLE_NAME,
-    ku.COLUMN_NAME
+    tc.TABLE_SCHEMA AS table_schema,
+    tc.TABLE_NAME   AS table_name,
+    ku.COLUMN_NAME  AS column_name
 FROM
     INFORMATION_SCHEMA.TABLE_CONSTRAINTS   tc
     JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE ku
@@ -91,7 +91,8 @@ ORDER BY
     tc.TABLE_SCHEMA, tc.TABLE_NAME, ku.ORDINAL_POSITION
 """
 
-_FK_SQL = """
+# Foreign keys query for Microsoft SQL Server
+_FK_SQL_MSSQL = """
 SELECT
     fk.name                                              AS constraint_name,
     SCHEMA_NAME(parent_obj.schema_id)                    AS child_schema,
@@ -111,6 +112,36 @@ FROM
                                                    AND ref_col.column_id     = fkc.referenced_column_id
 WHERE
     SCHEMA_NAME(parent_obj.schema_id) IN :schemas
+ORDER BY
+    child_schema, child_table, constraint_name
+"""
+
+# Foreign keys query for PostgreSQL (Supabase)
+_FK_SQL_POSTGRES = """
+SELECT
+    con.conname AS constraint_name,
+    nsc.nspname AS child_schema,
+    clc.relname AS child_table,
+    attc.attname AS child_column,
+    nsp.nspname AS parent_schema,
+    clp.relname AS parent_table,
+    attp.attname AS parent_column
+FROM (
+    SELECT 
+        conname, connamespace, conrelid, confrelid, contype,
+        unnest(conkey) AS child_attnum,
+        unnest(confkey) AS parent_attnum
+    FROM pg_constraint
+) con
+JOIN pg_namespace nsc ON nsc.oid = con.connamespace
+JOIN pg_class clc ON clc.oid = con.conrelid
+JOIN pg_attribute attc ON attc.attrelid = con.conrelid AND attc.attnum = con.child_attnum
+JOIN pg_class clp ON clp.oid = con.confrelid
+JOIN pg_namespace nsp ON nsp.oid = clp.relnamespace
+JOIN pg_attribute attp ON attp.attrelid = con.confrelid AND attp.attnum = con.parent_attnum
+WHERE
+    con.contype = 'f'
+    AND nsc.nspname IN :schemas
 ORDER BY
     child_schema, child_table, constraint_name
 """
@@ -143,8 +174,8 @@ def _extract_primary_keys(conn, schemas: tuple) -> dict:
     rows = conn.execute(text(_PK_SQL), {"schemas": schemas}).fetchall()
     pk_map: dict[str, list] = {}
     for row in rows:
-        full = f"{row.TABLE_SCHEMA}.{row.TABLE_NAME}"
-        pk_map.setdefault(full, []).append(row.COLUMN_NAME)
+        full = f"{row.table_schema}.{row.table_name}"
+        pk_map.setdefault(full, []).append(row.column_name)
     return pk_map
 
 
@@ -152,7 +183,10 @@ def _extract_foreign_keys(conn, schemas: tuple) -> list:
     """
     Returns a flat list of FK relationship dicts.
     """
-    rows = conn.execute(text(_FK_SQL), {"schemas": schemas}).fetchall()
+    is_postgres = conn.dialect.name == "postgresql"
+    query = _FK_SQL_POSTGRES if is_postgres else _FK_SQL_MSSQL
+    
+    rows = conn.execute(text(query), {"schemas": schemas}).fetchall()
     fk_list = []
     for row in rows:
         child_full  = f"{row.child_schema}.{row.child_table}"

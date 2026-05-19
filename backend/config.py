@@ -9,15 +9,22 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # ── Database ──────────────────────────────────────────────────────────────────
-# In production (Render), MSSQL_CONNECTION_STRING env var MUST be set:
-#   mssql+pymssql://<user>:<pass>@<server>.database.windows.net/<database>
-# For local Windows dev, override with a pyodbc URL in your .env file.
+# Prioritize Supabase / PostgreSQL connection strings.
+# Supabase URI format: postgresql+psycopg2://postgres:<password>@db.<project>.supabase.co:5432/postgres
 
 _FALLBACK_CONNECTION_STRING = (
-    "mssql+pymssql://localhost/AdventureWorks2019"  # will fail gracefully, not on import
+    "postgresql+psycopg2://postgres:postgres@localhost:5432/postgres"
 )
 
-CONNECTION_STRING = os.getenv("MSSQL_CONNECTION_STRING", _FALLBACK_CONNECTION_STRING)
+CONNECTION_STRING = (
+    os.getenv("SUPABASE_CONNECTION_STRING")
+    or os.getenv("DATABASE_URL")
+    or os.getenv("MSSQL_CONNECTION_STRING")
+    or _FALLBACK_CONNECTION_STRING
+)
+
+# Schemas to index (set to ["public"] for default Supabase, or keep AdventureWorks schemas if migrated)
+TARGET_SCHEMAS = os.getenv("TARGET_SCHEMAS", "public,Sales,Production,HumanResources,Purchasing,Person").split(",")
 
 # Pinecone Vector DB
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY", "your_pinecone_key")
