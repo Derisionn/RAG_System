@@ -33,8 +33,15 @@ class ReasoningAgent:
             tbl_cols = [c for c in columns if c["table_name"] == tbl]
             col_lines = []
             for c in tbl_cols:
-                col_lines.append(f"  - {c['column_name']} ({c['data_type']})")
-            schemas_desc.append(f"Table: {tbl}\nColumns:\n" + "\n".join(col_lines))
+                col_lines.append(f"  - \"{c['column_name']}\" ({c['data_type']})")
+            
+            if "." in tbl:
+                schema_name, table_name = tbl.split(".", 1)
+                quoted_tbl = f'"{schema_name}"."{table_name}"'
+            else:
+                quoted_tbl = f'"{tbl}"'
+            
+            schemas_desc.append(f"Table: {quoted_tbl}\nColumns:\n" + "\n".join(col_lines))
 
         schema_text = "\n\n".join(schemas_desc)
 
@@ -42,7 +49,14 @@ class ReasoningAgent:
         if paths:
             paths_desc = []
             for p in paths:
-                paths_desc.append(" -> ".join(p))
+                quoted_path_parts = []
+                for node in p:
+                    if "." in node:
+                        s_name, t_name = node.split(".", 1)
+                        quoted_path_parts.append(f'"{s_name}"."{t_name}"')
+                    else:
+                        quoted_path_parts.append(f'"{node}"')
+                paths_desc.append(" -> ".join(quoted_path_parts))
             paths_text = "Suggested Join Relationships between tables:\n" + "\n".join(paths_desc)
 
         prompt = f"""You are an expert PostgreSQL DBA and data analyst.
@@ -57,7 +71,7 @@ Rules:
 1. Generate standard, ANSI-compliant PostgreSQL queries only.
 2. DO NOT use T-SQL or Microsoft SQL Server specific grammar. Use standard PostgreSQL dialect.
 3. For limiting results, use 'LIMIT N' at the end of the query. DO NOT use T-SQL 'TOP N'.
-4. In PostgreSQL, always double-quote schemas and tables separately as "schema"."table" (e.g., "Sales"."Customer"). NEVER use "schema.table" as a single quoted string, as PostgreSQL will treat it as a single table name with a dot.
+4. In PostgreSQL, always double-quote schemas, tables, and columns separately exactly as shown in the Database Schema Context (e.g., use "Sales"."Customer" and NOT "sales"."customer" or "sales.customer"). PRESERVE the exact case capitalization of schemas, tables, and columns from the context.
 5. Ensure all joined tables are linked correctly based on keys.
 6. Only return the raw SQL code. DO NOT wrap it in any comments or markup except the query itself.
 

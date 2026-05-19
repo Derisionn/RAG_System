@@ -453,14 +453,36 @@ class SQLRAGPipeline:
     def _build_prompt(self, query: str, tables: list[str], columns: list[dict], paths: list[list[str]]) -> str:
         context_schema = "RELEVANT SCHEMA ELEMENTS:\n"
         for tbl in tables:
-            context_schema += f"- Table: {tbl}\n"
+            if "." in tbl:
+                schema_name, table_name = tbl.split(".", 1)
+                quoted_tbl = f'"{schema_name}"."{table_name}"'
+            else:
+                quoted_tbl = f'"{tbl}"'
+            context_schema += f"- Table: {quoted_tbl}\n"
+            
         context_schema += "\nRELEVANT COLUMNS:\n"
         for col in columns[:TOP_K_COLUMNS]:
-            context_schema += f"- {col['table']}.{col['column']} ({col['data_type']})\n"
+            tbl = col['table']
+            if "." in tbl:
+                schema_name, table_name = tbl.split(".", 1)
+                quoted_tbl = f'"{schema_name}"."{table_name}"'
+            else:
+                quoted_tbl = f'"{tbl}"'
+            context_schema += f"- {quoted_tbl}.\"{col['column']}\" ({col['data_type']})\n"
 
         context_joins = "\nSUGGESTED JOIN PATHS (Foreign Keys):\n"
         if paths:
-            unique_paths = list(set([" -> ".join(p) for p in paths]))
+            quoted_paths = []
+            for p in paths:
+                quoted_path_parts = []
+                for node in p:
+                    if "." in node:
+                        s_name, t_name = node.split(".", 1)
+                        quoted_path_parts.append(f'"{s_name}"."{t_name}"')
+                    else:
+                        quoted_path_parts.append(f'"{node}"')
+                quoted_paths.append(" -> ".join(quoted_path_parts))
+            unique_paths = list(set(quoted_paths))
             for p in unique_paths:
                 context_joins += f"- {p}\n"
         else:

@@ -17,7 +17,7 @@ class PlannerAgent:
             mapped_meta = {
                 "table_name": meta.get("table"),
                 "column_name": meta.get("column"),
-                "data_type": meta.get("type", "text"),
+                "data_type": meta.get("data_type", "text"),
                 "description": meta.get("description", "")
             }
 
