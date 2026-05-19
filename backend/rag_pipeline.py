@@ -477,7 +477,7 @@ USER QUESTION: "{query}"
 
 CONSTRAINTS:
 1. Return ONLY the raw SQL code. No markdown formatting (no ```sql), no explanations.
-2. Use fully qualified table names (schema.table) or simple table names as appropriate for the schemas retrieved.
+2. In PostgreSQL, always double-quote schemas and tables separately as "schema"."table" (e.g., "Sales"."Customer"). NEVER use "schema.table" as a single quoted string, as PostgreSQL will treat it as a single table name with a dot.
 3. Use JOINs based on the suggested paths where possible.
 4. If a join path is A -> B -> C, use: FROM A JOIN B ON ... JOIN C ON ...
 5. Use LIMIT for limiting results if appropriate (DO NOT use TOP).

@@ -9,6 +9,8 @@ services:
         value: 3.11.9
       - key: MSSQL_CONNECTION_STRING
         sync: false
+      - key: SUPABASE_CONNECTION_STRING
+        sync: false
       - key: PINECONE_API_KEY
         sync: false
       - key: NEO4J_URI
