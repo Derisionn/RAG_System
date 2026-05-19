@@ -3,6 +3,31 @@ from fastapi import HTTPException
 from ..services.rag_service import RAGService
 from ..config.config import MAX_RETRIES
 
+# Google API exception — imported defensively so we can catch quota errors
+try:
+    from google.api_core.exceptions import ResourceExhausted as _ResourceExhausted
+except ImportError:
+    _ResourceExhausted = None
+
+
+def _is_quota_error(exc: Exception) -> bool:
+    """Return True if exc is a Gemini rate-limit / quota-exhausted error."""
+    if _ResourceExhausted and isinstance(exc, _ResourceExhausted):
+        return True
+    msg = str(exc).lower()
+    return any(kw in msg for kw in ("resourceexhausted", "quota exceeded", "429", "rate limit", "resource_exhausted"))
+
+
+_QUOTA_DETAIL = {
+    "message": "Gemini API free-tier daily quota exceeded (limit: 20 requests/day).",
+    "action": (
+        "Wait until your quota resets (usually midnight Pacific Time) "
+        "or upgrade to a pay-as-you-go Gemini API plan at "
+        "https://ai.google.dev/gemini-api/docs/rate-limits"
+    ),
+}
+
+
 class ChatController:
     def __init__(self, rag_service: RAGService):
         self.rag_service = rag_service
@@ -11,7 +36,9 @@ class ChatController:
         """Coordinate with RAG service to run query and return formatted results."""
         try:
             sql, df, error = self.rag_service.execute_rag(question)
-        except Exception:
+        except Exception as exc:
+            if _is_quota_error(exc):
+                raise HTTPException(status_code=429, detail=_QUOTA_DETAIL)
             raise HTTPException(
                 status_code=500,
                 detail=f"Pipeline error:\n{traceback.format_exc()}",
@@ -47,7 +74,9 @@ class ChatController:
             prompt = self.rag_service.reasoner.build_prompt(question, tables, columns, paths)
             sql = self.rag_service.reasoner.generate_sql(prompt)
             return {"question": question, "sql": sql}
-        except Exception:
+        except Exception as exc:
+            if _is_quota_error(exc):
+                raise HTTPException(status_code=429, detail=_QUOTA_DETAIL)
             raise HTTPException(
                 status_code=500,
                 detail=f"Generation error:\n{traceback.format_exc()}",

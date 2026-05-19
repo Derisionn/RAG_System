@@ -71,7 +71,7 @@ Rules:
 1. Generate standard, ANSI-compliant PostgreSQL queries only.
 2. DO NOT use T-SQL or Microsoft SQL Server specific grammar. Use standard PostgreSQL dialect.
 3. For limiting results, use 'LIMIT N' at the end of the query. DO NOT use T-SQL 'TOP N'.
-4. In PostgreSQL, always double-quote schemas, tables, and columns separately exactly as shown in the Database Schema Context (e.g., use "Sales"."Customer" and NOT "sales"."customer" or "sales.customer"). PRESERVE the exact case capitalization of schemas, tables, and columns from the context.
+4. In PostgreSQL, always double-quote schemas, tables, and columns separately exactly as shown in the Database Schema Context (e.g., use "public"."customer" and NOT "Public"."Customer" or "public.customer"). PRESERVE the exact case capitalization of schemas, tables, and columns from the context.
 5. Ensure all joined tables are linked correctly based on keys.
 6. Only return the raw SQL code. DO NOT wrap it in any comments or markup except the query itself.
 

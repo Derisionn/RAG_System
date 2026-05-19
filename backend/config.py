@@ -28,15 +28,14 @@ TARGET_SCHEMAS = os.getenv("TARGET_SCHEMAS", "public,Sales,Production,HumanResou
 
 # Pinecone Vector DB
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY", "your_pinecone_key")
-PINECONE_INDEX   = os.getenv("PINECONE_INDEX", "adventureworks-schema")
+PINECONE_INDEX   = os.getenv("PINECONE_INDEX", "dvd-rental-schema")
 
 # Neo4j Graph DB
 NEO4J_URI   = os.getenv("NEO4J_URI", "bolt://localhost:7687")
 NEO4J_USER  = os.getenv("NEO4J_USERNAME", "neo4j")
 NEO4J_PWD   = os.getenv("NEO4J_PASSWORD", "your_password")
 
-# Schemas to index (set to None to index ALL schemas)
-TARGET_SCHEMAS = ["Sales", "Production", "HumanResources", "Purchasing", "Person"]
+# Schemas to index — driven by TARGET_SCHEMAS env var (set to "public" for DVD Rental / Supabase)
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 # backend/ lives one level inside the project root — point BASE_DIR at the root

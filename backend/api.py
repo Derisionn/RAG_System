@@ -27,6 +27,20 @@ from pydantic import BaseModel, Field
 from .rag_pipeline import SQLRAGPipeline
 from .config import MAX_RETRIES
 
+# Google API exception — imported defensively so we can catch quota errors
+try:
+    from google.api_core.exceptions import ResourceExhausted as _ResourceExhausted
+except ImportError:
+    _ResourceExhausted = None
+
+
+def _is_quota_error(exc: Exception) -> bool:
+    """Return True if exc is a Gemini rate-limit / quota-exhausted error."""
+    if _ResourceExhausted and isinstance(exc, _ResourceExhausted):
+        return True
+    msg = str(exc).lower()
+    return any(kw in msg for kw in ("resourceexhausted", "quota exceeded", "429", "rate limit", "resource_exhausted"))
+
 
 # ── Lifespan: initialize pipeline once at startup ────────────────────────────
 pipeline: SQLRAGPipeline | None = None
@@ -172,7 +186,15 @@ def query(request: QueryRequest):
 
     try:
         sql, df, error = pipeline.generate_sql(request.question)
-    except Exception:
+    except Exception as exc:
+        if _is_quota_error(exc):
+            raise HTTPException(
+                status_code=429,
+                detail={
+                    "message": "Gemini API free-tier daily quota exceeded (limit: 20 requests/day).",
+                    "action": "Wait until your quota resets (usually midnight Pacific Time) or upgrade to a pay-as-you-go Gemini API plan at https://ai.google.dev/gemini-api/docs/rate-limits",
+                },
+            )
         raise HTTPException(
             status_code=500,
             detail=f"Pipeline error:\n{traceback.format_exc()}",
@@ -218,7 +240,15 @@ def query_sql_only(request: QueryRequest):
         import google.generativeai as genai  # already configured
         response = pipeline.llm.generate_content(prompt)
         sql = response.text.strip().replace("```sql", "").replace("```", "").strip()
-    except Exception:
+    except Exception as exc:
+        if _is_quota_error(exc):
+            raise HTTPException(
+                status_code=429,
+                detail={
+                    "message": "Gemini API free-tier daily quota exceeded (limit: 20 requests/day).",
+                    "action": "Wait until your quota resets (usually midnight Pacific Time) or upgrade to a pay-as-you-go Gemini API plan at https://ai.google.dev/gemini-api/docs/rate-limits",
+                },
+            )
         raise HTTPException(
             status_code=500,
             detail=f"Generation error:\n{traceback.format_exc()}",

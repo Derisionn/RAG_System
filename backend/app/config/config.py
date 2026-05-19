@@ -28,7 +28,7 @@ TARGET_SCHEMAS = os.getenv("TARGET_SCHEMAS", "public,Sales,Production,HumanResou
 
 # Pinecone Vector DB
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY", "your_pinecone_key")
-PINECONE_INDEX   = os.getenv("PINECONE_INDEX", "adventureworks-schema")
+PINECONE_INDEX   = os.getenv("PINECONE_INDEX", "dvd-rental-schema")
 
 # Neo4j Graph DB
 NEO4J_URI   = os.getenv("NEO4J_URI", "bolt://localhost:7687")
