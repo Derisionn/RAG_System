@@ -37,9 +37,9 @@ class ReasoningAgent:
             
             if "." in tbl:
                 schema_name, table_name = tbl.split(".", 1)
-                quoted_tbl = f'"{schema_name}"."{table_name}"'
+                quoted_tbl = f"{schema_name}.{table_name}"
             else:
-                quoted_tbl = f'"{tbl}"'
+                quoted_tbl = tbl
             
             schemas_desc.append(f"Table: {quoted_tbl}\nColumns:\n" + "\n".join(col_lines))
 
@@ -53,9 +53,9 @@ class ReasoningAgent:
                 for node in p:
                     if "." in node:
                         s_name, t_name = node.split(".", 1)
-                        quoted_path_parts.append(f'"{s_name}"."{t_name}"')
+                        quoted_path_parts.append(f"{s_name}.{t_name}")
                     else:
-                        quoted_path_parts.append(f'"{node}"')
+                        quoted_path_parts.append(node)
                 paths_desc.append(" -> ".join(quoted_path_parts))
             paths_text = "Suggested Join Relationships between tables:\n" + "\n".join(paths_desc)
 
@@ -71,7 +71,7 @@ Rules:
 1. Generate standard, ANSI-compliant PostgreSQL queries only.
 2. DO NOT use T-SQL or Microsoft SQL Server specific grammar. Use standard PostgreSQL dialect.
 3. For limiting results, use 'LIMIT N' at the end of the query. DO NOT use T-SQL 'TOP N'.
-4. In PostgreSQL, always double-quote schemas, tables, and columns separately exactly as shown in the Database Schema Context (e.g., use "public"."customer" and NOT "Public"."Customer" or "public.customer"). PRESERVE the exact case capitalization of schemas, tables, and columns from the context.
+4. DO NOT double-quote schemas, tables, or columns unless absolutely necessary (e.g. if they contain spaces). Use unquoted identifiers (like sales.customer) so PostgreSQL handles case-insensitivity automatically.
 5. Ensure all joined tables are linked correctly based on keys.
 6. Only return the raw SQL code. DO NOT wrap it in any comments or markup except the query itself.
 
