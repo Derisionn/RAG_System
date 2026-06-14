@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends
-from ..models.response_models import HealthResponse
+from ..schemas.response_models import HealthResponse
 from ..controllers.health_controller import HealthController
 from .chat_routes import get_rag_service
 

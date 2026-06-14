@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends
-from ..models.request_models import QueryRequest
-from ..models.response_models import QueryResponse, SQLOnlyResponse
+from ..schemas.request_models import QueryRequest
+from ..schemas.response_models import QueryResponse, SQLOnlyResponse
 from ..controllers.chat_controller import ChatController
 from ..services.rag_service import RAGService
 

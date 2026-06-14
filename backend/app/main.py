@@ -13,7 +13,7 @@ if sys.platform.startswith("win"):
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .routes import chat_router, health_router, ingest_router
+from .routes import chat_router, health_router
 from .routes.chat_routes import get_rag_service
 
 @asynccontextmanager
@@ -52,4 +52,3 @@ app.add_middleware(
 # Bind Routers
 app.include_router(chat_router)
 app.include_router(health_router)
-app.include_router(ingest_router)
