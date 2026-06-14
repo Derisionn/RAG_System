@@ -23,7 +23,10 @@ import requests
 from pinecone import Pinecone, ServerlessSpec
 from tqdm import tqdm
 
-from .config import (
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from backend.app.config.config import (
     SCHEMA_JSON,
     EMBEDDING_MODEL,
     EMBEDDING_DIM,

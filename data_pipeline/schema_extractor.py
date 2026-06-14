@@ -49,7 +49,10 @@ from textwrap import indent
 
 from sqlalchemy import create_engine, text
 
-from .config import CONNECTION_STRING, SCHEMA_JSON, TARGET_SCHEMAS
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from backend.app.config.config import CONNECTION_STRING, SCHEMA_JSON, TARGET_SCHEMAS
 
 
 # ── SQL Queries ───────────────────────────────────────────────────────────────
