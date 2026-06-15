@@ -14,19 +14,22 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .routes import chat_router, health_router
-from .routes.chat_routes import get_rag_service
+from .routes.chat_routes import get_rag_service, get_mongo_repo
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Start-up: initialize service connections. Shut-down: close them."""
     print("[startup] Initializing SQL RAG Pipeline Service Layer...")
-    # Trigger lazy instantiation
+    # Trigger lazy instantiation of both singletons
     service = get_rag_service()
+    mongo = get_mongo_repo()
     print("[startup] Services ready [OK]")
     yield
     print("[shutdown] Closing service connections...")
     service.close()
+    mongo.close()
     print("[shutdown] Service cleanup done.")
+
 
 app = FastAPI(
     title="SQL RAG System Clean API",

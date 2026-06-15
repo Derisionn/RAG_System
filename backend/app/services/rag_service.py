@@ -15,6 +15,7 @@ from ..config.config import MAX_RETRIES
 # State representation
 class AgentState(TypedDict):
     question: str
+    history: list[dict]        # conversation history from MongoDB
     tables: list[str]
     columns: list[dict]
     paths: list[list[str]]
@@ -100,7 +101,8 @@ class RAGService:
 
         if state["attempts"] == 0:
             prompt = self.reasoner.build_prompt(
-                state["question"], state["tables"], state["columns"], state["paths"]
+                state["question"], state["tables"], state["columns"], state["paths"],
+                history=state.get("history", [])
             )
         else:
             prompt = self.reasoner.build_correction_prompt(
@@ -118,6 +120,7 @@ class RAGService:
             "error": None,
             "validation_error": None,
         }
+
 
     def _node_validate_sql(self, state: AgentState) -> AgentState:
         """Validate safety and syntax structure of the generated query."""
@@ -173,13 +176,14 @@ class RAGService:
 
     # ── Pipeline Interface ────────────────────────────────────────────────────
 
-    def execute_rag(self, question: str) -> tuple[str, pd.DataFrame, Optional[str]]:
+    def execute_rag(self, question: str, history: list[dict] | None = None) -> tuple[str, pd.DataFrame, Optional[str]]:
         """
         Execute full RAG pipeline returning (sql, df, error).
-        Matches old rag_pipeline.py execute interface.
+        Accepts optional conversation history for context-aware SQL generation.
         """
         initial_state: AgentState = {
             "question": question,
+            "history": history or [],
             "tables": [],
             "columns": [],
             "paths": [],

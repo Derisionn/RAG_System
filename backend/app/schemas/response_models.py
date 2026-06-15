@@ -2,6 +2,7 @@ from typing import Any
 from pydantic import BaseModel
 
 class QueryResponse(BaseModel):
+    session_id: str
     question: str
     sql: str
     attempts: int

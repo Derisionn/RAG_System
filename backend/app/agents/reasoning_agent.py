@@ -26,7 +26,7 @@ class ReasoningAgent:
             except Exception as e:
                 raise e
 
-    def build_prompt(self, question: str, tables: list[str], columns: list[dict], paths: list[list[str]]) -> str:
+    def build_prompt(self, question: str, tables: list[str], columns: list[dict], paths: list[list[str]], history: list[dict] | None = None) -> str:
         """Build standard LLM prompt instructing it to write Supabase compatible PostgreSQL queries."""
         schemas_desc = []
         for tbl in tables:
@@ -59,6 +59,15 @@ class ReasoningAgent:
                 paths_desc.append(" -> ".join(quoted_path_parts))
             paths_text = "Suggested Join Relationships between tables:\n" + "\n".join(paths_desc)
 
+        # Build conversation history block
+        history_text = ""
+        if history:
+            history_lines = []
+            for msg in history:
+                history_lines.append(f"  User: {msg['question']}")
+                history_lines.append(f"  SQL:  {msg['sql']}")
+            history_text = "Conversation History (for context):\n" + "\n".join(history_lines)
+
         prompt = f"""You are an expert PostgreSQL DBA and data analyst.
 Convert the natural language question into a high-performance PostgreSQL query that is 100% compatible with Supabase database syntax.
 
@@ -67,6 +76,8 @@ Database Schema Context:
 
 {paths_text}
 
+{history_text}
+
 Rules:
 1. Generate standard, ANSI-compliant PostgreSQL queries only.
 2. DO NOT use T-SQL or Microsoft SQL Server specific grammar. Use standard PostgreSQL dialect.
@@ -74,6 +85,7 @@ Rules:
 4. DO NOT double-quote schemas, tables, or columns unless absolutely necessary (e.g. if they contain spaces). Use unquoted identifiers (like sales.customer) so PostgreSQL handles case-insensitivity automatically.
 5. Ensure all joined tables are linked correctly based on keys.
 6. Only return the raw SQL code. DO NOT wrap it in any comments or markup except the query itself.
+7. If the question refers to results from a previous query (e.g. "their", "those", "the same"), use the Conversation History above to understand the context.
 
 Question: {question}
 SQL:"""

@@ -58,3 +58,9 @@ GEMINI_API_KEY  = os.environ.get("GEMINI_API_KEY", "")  # set in env
 
 # ── Agent ─────────────────────────────────────────────────────────────────────
 MAX_RETRIES     = 3    # max SQL self-correction attempts
+
+# ── MongoDB (Conversation Memory) ─────────────────────────────────────────────
+MONGODB_URI      = os.getenv("MONGODB_URI", "")
+MONGODB_DB_NAME  = os.getenv("MONGODB_DB_NAME", "rag_system")
+HISTORY_LIMIT    = 6   # number of past messages (3 Q&A pairs) to inject into prompt
+

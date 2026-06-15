@@ -1,6 +1,7 @@
 import traceback
 from fastapi import HTTPException
 from ..services.rag_service import RAGService
+from ..repositories.mongodb_repository import MongoRepository
 from ..config.config import MAX_RETRIES
 
 # Google API exception — imported defensively so we can catch quota errors
@@ -29,13 +30,21 @@ _QUOTA_DETAIL = {
 
 
 class ChatController:
-    def __init__(self, rag_service: RAGService):
+    def __init__(self, rag_service: RAGService, mongo_repo: MongoRepository):
         self.rag_service = rag_service
+        self.mongo_repo = mongo_repo
 
-    def execute_query(self, question: str) -> dict:
+    def execute_query(self, question: str, session_id: str) -> dict:
         """Coordinate with RAG service to run query and return formatted results."""
+        # 1. Load conversation history from MongoDB
+        history = []
         try:
-            sql, df, error = self.rag_service.execute_rag(question)
+            history = self.mongo_repo.get_history(session_id)
+        except Exception as e:
+            print(f"[ChatController] Warning: could not load history: {e}")
+
+        try:
+            sql, df, error = self.rag_service.execute_rag(question, history=history)
         except Exception as exc:
             if _is_quota_error(exc):
                 raise HTTPException(status_code=429, detail=_QUOTA_DETAIL)
@@ -57,7 +66,14 @@ class ChatController:
         columns = list(df.columns)
         rows = df.head(100).to_dict(orient="records")
 
+        # 2. Save this Q&A turn to MongoDB
+        try:
+            self.mongo_repo.save_message(session_id, question, sql, rows)
+        except Exception as e:
+            print(f"[ChatController] Warning: could not save to MongoDB: {e}")
+
         return {
+            "session_id": session_id,
             "question": question,
             "sql": sql,
             "attempts": self.rag_service.last_attempts,
