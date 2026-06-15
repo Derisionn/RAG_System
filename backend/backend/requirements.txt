@@ -6,6 +6,7 @@ sqlalchemy==2.0.36
 psycopg2-binary>=2.9.9
 pymssql>=2.3.0
 pyodbc
+pymongo>=4.7.0
 
 # Vector Database
 pinecone==6.0.0
