@@ -1,8 +1,10 @@
 from ..services.rag_service import RAGService
+from ..repositories.mongodb_repository import MongoRepository
 
 class HealthController:
-    def __init__(self, rag_service: RAGService):
+    def __init__(self, rag_service: RAGService, mongo_repo: MongoRepository):
         self.rag_service = rag_service
+        self.mongo_repo = mongo_repo
 
     def get_health_status(self) -> dict:
         """Run health check validations against all backend components."""
@@ -11,6 +13,7 @@ class HealthController:
             "neo4j": "unknown",
             "supabase": "unknown",
             "gemini": "unknown",
+            "mongodb": "unknown",
         }
 
         # Pinecone
@@ -40,6 +43,13 @@ class HealthController:
             results["gemini"] = "ok" if resp_text else "no response"
         except Exception as e:
             results["gemini"] = f"error: {str(e)[:120]}"
+
+        # MongoDB
+        try:
+            self.mongo_repo.check_connection()
+            results["mongodb"] = "ok"
+        except Exception as e:
+            results["mongodb"] = f"error: {str(e)[:120]}"
 
         overall = (
             "healthy"

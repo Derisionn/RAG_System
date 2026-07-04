@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Optional
 from pydantic import BaseModel
 
 class QueryResponse(BaseModel):
@@ -9,6 +9,8 @@ class QueryResponse(BaseModel):
     columns: list[str]
     rows: list[dict[str, Any]]
     row_count: int
+    answer: str | None = None
+    chart_config: Optional[dict] = None
 
 class SQLOnlyResponse(BaseModel):
     question: str
@@ -20,3 +22,4 @@ class HealthResponse(BaseModel):
     neo4j: str
     supabase: str
     gemini: str
+    mongodb: str

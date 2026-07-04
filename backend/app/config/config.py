@@ -59,8 +59,18 @@ GEMINI_API_KEY  = os.environ.get("GEMINI_API_KEY", "")  # set in env
 # ── Agent ─────────────────────────────────────────────────────────────────────
 MAX_RETRIES     = 3    # max SQL self-correction attempts
 
-# ── MongoDB (Conversation Memory) ─────────────────────────────────────────────
+# ── MongoDB & Memory System ───────────────────────────────────────────────────
 MONGODB_URI      = os.getenv("MONGODB_URI", "")
 MONGODB_DB_NAME  = os.getenv("MONGODB_DB_NAME", "rag_system")
-HISTORY_LIMIT    = 6   # number of past messages (3 Q&A pairs) to inject into prompt
+HISTORY_LIMIT    = 10   # number of recent messages to inject (5 Q&A pairs)
+SUMMARY_TRIGGER_THRESHOLD = 15 # total messages before generating a new summary
+PINECONE_HISTORY_NAMESPACE      = "chat-history"       # SQL Q&A pairs
+PINECONE_CHAT_HISTORY_NAMESPACE = "chat-conversations"  # Conversational Q&A pairs
+
+# ── Authentication ──────────────────────────────────────────────────────────────
+AUTH_DB_URL = os.getenv("AUTH_DB_URL", "")
+JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "your-super-secret-jwt-key")
+JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "15"))
+REFRESH_TOKEN_EXPIRE_MINUTES = int(os.getenv("REFRESH_TOKEN_EXPIRE_MINUTES", "10080")) # 7 days
 

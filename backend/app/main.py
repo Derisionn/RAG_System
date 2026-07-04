@@ -13,7 +13,7 @@ if sys.platform.startswith("win"):
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .routes import chat_router, health_router
+from .routes import chat_router, health_router, auth_router
 from .routes.chat_routes import get_rag_service, get_mongo_repo
 
 @asynccontextmanager
@@ -42,16 +42,18 @@ app = FastAPI(
 )
 
 # CORS Middleware setup
-_FRONTEND_URL = os.getenv("FRONTEND_URL", "*")
-_CORS_ORIGINS = [_FRONTEND_URL] if _FRONTEND_URL != "*" else ["*"]
+_FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
+_CORS_ORIGINS = [_FRONTEND_URL] if _FRONTEND_URL != "*" else ["http://localhost:5173"]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_CORS_ORIGINS,
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 # Bind Routers
+app.include_router(auth_router)
 app.include_router(chat_router)
 app.include_router(health_router)

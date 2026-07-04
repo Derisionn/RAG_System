@@ -59,18 +59,36 @@ function AIMessage({ msg }) {
 
     return (
         <div className="ai-card">
-            <SqlBlock code={msg.sql} />
-            <ResultsTable
-                columns={msg.columns}
-                rows={msg.rows}
-                rowCount={msg.rowCount}
-                attempts={msg.attempts}
-            />
+            {msg.answer && (
+                <div className="nl-answer">
+                    {msg.answer}
+                </div>
+            )}
+            {msg.sql && <SqlBlock code={msg.sql} />}
+            {msg.sql && (
+                <ResultsTable
+                    columns={msg.columns || []}
+                    rows={msg.rows || []}
+                    rowCount={msg.rowCount ?? msg.rows?.length ?? 0}
+                    attempts={msg.attempts || 1}
+                />
+            )}
+            {!msg.sql && !msg.answer && !msg.error && (
+                <div style={{ padding: '16px' }}>
+                    <div className="error-card">
+                        <span className="error-icon">⚠️</span>
+                        <div className="error-text">
+                            <h4>Query Interrupted</h4>
+                            <p>This query failed or was interrupted before completion.</p>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     )
 }
 
-export default function MessageList({ messages, loading, suggestions, onSuggestion, messagesEndRef }) {
+export default function MessageList({ messages, loading, loadingMessage, suggestions, onSuggestion, messagesEndRef }) {
     if (messages.length === 0 && !loading) {
         return (
             <div className="messages-area">
@@ -115,7 +133,7 @@ export default function MessageList({ messages, loading, suggestions, onSuggesti
                 <div className="typing-indicator">
                     <div className="avatar ai-avatar">🤖</div>
                     <div className="typing-bubble">
-                        <span className="typing-step">Thinking…</span>
+                        <span className="typing-step">{loadingMessage || 'Thinking…'}</span>
                         <div className="dots">
                             <span /><span /><span />
                         </div>

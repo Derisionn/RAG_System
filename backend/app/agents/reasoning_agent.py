@@ -1,14 +1,11 @@
 import time
-import google.generativeai as genai
+import pandas as pd
 from google.api_core.exceptions import ResourceExhausted
-from ..config.config import GEMINI_API_KEY, GEMINI_MODEL
-
-# Configure Gemini
-genai.configure(api_key=GEMINI_API_KEY)
+from ..config.gemini_client import gemini_model
 
 class ReasoningAgent:
     def __init__(self):
-        self.llm = genai.GenerativeModel(GEMINI_MODEL)
+        self.llm = gemini_model
 
     def generate_sql(self, prompt: str, max_retries: int = 5) -> str:
         """Call Gemini LLM with exponential backoff on ResourceExhausted (429) rate limit."""
@@ -26,7 +23,53 @@ class ReasoningAgent:
             except Exception as e:
                 raise e
 
-    def build_prompt(self, question: str, tables: list[str], columns: list[dict], paths: list[list[str]], history: list[dict] | None = None) -> str:
+    def summarize_history(self, messages: list[dict], max_retries: int = 3) -> str:
+        """Ask Gemini to summarize the older conversation history."""
+        if not messages:
+            return ""
+        
+        history_lines = []
+        for msg in messages:
+            history_lines.append(f"User: {msg['question']}\nSQL: {msg['sql']}")
+            
+        history_text = "\n\n".join(history_lines)
+        prompt = f"""Summarize the following SQL conversation history into a concise paragraph.
+Focus on the tables they explored, the filters they applied, and the general intent.
+
+Conversation:
+{history_text}
+
+Summary:"""
+        delay = 2.0
+        for attempt in range(max_retries):
+            try:
+                response = self.llm.generate_content(prompt)
+                return response.text.strip()
+            except ResourceExhausted as e:
+                if attempt == max_retries - 1:
+                    raise e
+                time.sleep(delay)
+                delay *= 2
+            except Exception as e:
+                raise e
+
+    def generate_short_title(self, question: str, max_retries: int = 2) -> str:
+        """Generate a short 3-5 word title for a new session based on the first question."""
+        prompt = f"Summarize the following question into a short title of 3-6 words. Do not use quotes or special formatting.\n\nQuestion: {question}\n\nTitle:"
+        delay = 1.0
+        for attempt in range(max_retries):
+            try:
+                response = self.llm.generate_content(prompt)
+                return response.text.strip().replace('"', '')
+            except ResourceExhausted as e:
+                if attempt == max_retries - 1:
+                    raise e
+                time.sleep(delay)
+                delay *= 2
+            except Exception as e:
+                return ""
+
+    def build_prompt(self, question: str, tables: list[str], columns: list[dict], paths: list[list[str]], history: dict | None = None) -> str:
         """Build standard LLM prompt instructing it to write Supabase compatible PostgreSQL queries."""
         schemas_desc = []
         for tbl in tables:
@@ -60,14 +103,27 @@ class ReasoningAgent:
                 paths_desc.append(" -> ".join(quoted_path_parts))
             paths_text = "Suggested Join Relationships between tables:\n" + "\n".join(paths_desc)
 
-        # Build conversation history block
+        # Build 3-layer memory block
         history_text = ""
         if history:
-            history_lines = []
-            for msg in history:
-                history_lines.append(f"  User: {msg['question']}")
-                history_lines.append(f"  SQL:  {msg['sql']}")
-            history_text = "Conversation History (for context):\n" + "\n".join(history_lines)
+            blocks = []
+            if history.get("summary"):
+                blocks.append("─── CONVERSATION SUMMARY (from older messages) ───\n" + history["summary"])
+                
+            if history.get("semantic_history"):
+                semantic_lines = ["─── RELEVANT PAST QUERIES ───"]
+                for msg in history["semantic_history"]:
+                    semantic_lines.append(f"  User: {msg['question']}\n  SQL:  {msg['sql']}")
+                blocks.append("\n".join(semantic_lines))
+                
+            if history.get("messages"):
+                recent_lines = ["─── RECENT HISTORY (immediate context) ───"]
+                for msg in history["messages"]:
+                    recent_lines.append(f"  User: {msg['question']}\n  SQL:  {msg['sql']}")
+                blocks.append("\n".join(recent_lines))
+                
+            if blocks:
+                history_text = "Conversation Memory:\n" + "\n\n".join(blocks)
 
         prompt = f"""You are an expert PostgreSQL DBA and data analyst.
 Convert the natural language question into a high-performance PostgreSQL query that is 100% compatible with Supabase database syntax.
@@ -108,3 +164,39 @@ Database Execution Error:
 Please analyze this database execution error and generate a corrected PostgreSQL query that fixes the issue. Return ONLY the raw SQL code.
 Corrected SQL:"""
         return prompt
+
+    def generate_answer(self, question: str, df: pd.DataFrame, max_retries: int = 3) -> str:
+        """Generate a natural language answer based on the user's question and the SQL results."""
+        if df is None or df.empty:
+            return "No data was returned for this query."
+            
+        # Only take top 5 rows to save tokens and latency
+        data_subset = df.head(5).to_dict(orient="records")
+        row_count = len(df)
+        
+        prompt = f"""You are a helpful AI data assistant.
+A user asked a question about the AdventureWorks database. We ran a SQL query to get the answer.
+Please provide a clear, concise, and natural-sounding sentence that answers the user's question using the provided data.
+DO NOT explain how you got the data, DO NOT show the SQL, just answer the question directly as if you were talking to them.
+If there are many rows, just summarize the top results or mention the total count ({row_count} total rows).
+
+Question: {question}
+
+Data (Top 5 rows):
+{data_subset}
+
+Natural Language Answer:"""
+
+        delay = 1.0
+        for attempt in range(max_retries):
+            try:
+                response = self.llm.generate_content(prompt)
+                return response.text.strip()
+            except ResourceExhausted as e:
+                if attempt == max_retries - 1:
+                    raise e
+                time.sleep(delay)
+                delay *= 2
+            except Exception as e:
+                print(f"[ReasoningAgent] Error generating answer: {e}")
+                return "Here are the results for your query."
