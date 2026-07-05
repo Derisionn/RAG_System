@@ -6,7 +6,7 @@ import os
 from dotenv import load_dotenv
 
 # Load .env file
-load_dotenv()
+load_dotenv(override=True)
 
 # ── Database ──────────────────────────────────────────────────────────────────
 # Prioritize Supabase / PostgreSQL connection strings.
@@ -56,6 +56,10 @@ TOP_K_COLUMNS   = 10   # number of columns returned by semantic search
 GEMINI_MODEL    = "gemini-flash-latest"
 GEMINI_API_KEY  = os.environ.get("GEMINI_API_KEY", "")  # set in env
 
+# ── Google OAuth 2.0 ──────────────────────────────────────────────────────────
+GOOGLE_CLIENT_ID     = os.getenv("GOOGLE_CLIENT_ID", "")
+GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
+
 # ── Agent ─────────────────────────────────────────────────────────────────────
 MAX_RETRIES     = 3    # max SQL self-correction attempts
 
@@ -73,4 +77,9 @@ JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "your-super-secret-jwt-key")
 JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "15"))
 REFRESH_TOKEN_EXPIRE_MINUTES = int(os.getenv("REFRESH_TOKEN_EXPIRE_MINUTES", "10080")) # 7 days
+
+# ── Email Service ─────────────────────────────────────────────────────────────
+SENDGRID_API_KEY = os.getenv("SENDGRID_API_KEY", "")
+SENDGRID_FROM_EMAIL = os.getenv("SENDGRID_FROM_EMAIL", "noreply@example.com")
+print(f"DEBUG CONFIG: SENDGRID_API_KEY={SENDGRID_API_KEY[:10] if SENDGRID_API_KEY else None}")
 

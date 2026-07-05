@@ -49,7 +49,7 @@ Do not include markdown tags like ```json."""
                 
                 config = json.loads(text.strip())
                 # Attach the actual raw data to the config so the frontend has it
-                config["data"] = df.to_dict(orient="records")
+                config["data"] = json.loads(df.to_json(orient="records", date_format="iso"))
                 return config
             except ResourceExhausted as e:
                 if attempt == max_retries - 1:

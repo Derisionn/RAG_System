@@ -7,14 +7,7 @@ hljs.registerLanguage('sql', sql)
 
 export default function SqlBlock({ code }) {
     const [copied, setCopied] = useState(false)
-    const codeRef = useRef(null)
-
-    useEffect(() => {
-        if (codeRef.current) {
-            codeRef.current.removeAttribute('data-highlighted')
-            hljs.highlightElement(codeRef.current)
-        }
-    }, [code])
+    const highlightedCode = hljs.highlight(code || '', { language: 'sql' }).value;
 
     function copy() {
         navigator.clipboard.writeText(code).then(() => {
@@ -34,7 +27,7 @@ export default function SqlBlock({ code }) {
                 </button>
             </div>
             <div className="sql-code">
-                <code ref={codeRef} className="language-sql">{code}</code>
+                <code className="language-sql" dangerouslySetInnerHTML={{ __html: highlightedCode }}></code>
             </div>
         </div>
     )

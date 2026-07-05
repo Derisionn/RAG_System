@@ -11,7 +11,7 @@ class IntentionAgent:
         # Plain fallback model
         self.llm_plain = gemini_model
 
-    def generate_plan(self, question: str, max_retries: int = 3) -> list[dict]:
+    def generate_plan(self, question: str, history: dict | None = None, max_retries: int = 3) -> list[dict]:
         """
         Parses the user's question and returns a list of task dicts.
         Uses Gemini Structured Outputs to guarantee valid JSON matching the Plan schema.
@@ -39,8 +39,17 @@ User: "Why are our electronics sales declining?"
 Example 2 (chart):
 User: "Plot a bar chart of the top 5 customers."
 → tasks: [sql_query (query="top 5 customers by revenue"), generate_chart (chart_type="bar")]
+"""
 
-User Request: {question}"""
+        history_text = ""
+        if history and history.get("messages"):
+            recent_lines = ["\nRecent Conversation History:"]
+            # Get last 3 interactions to provide context for pronouns (e.g. "it", "the graph")
+            for msg in history["messages"][-3:]:
+                recent_lines.append(f"User: {msg['question']}\nAssistant: {msg.get('answer', '...')}")
+            history_text = "\n".join(recent_lines) + "\n"
+
+        prompt += f"{history_text}\nUser Request: {question}"
 
         delay = 1.0
         for attempt in range(max_retries):

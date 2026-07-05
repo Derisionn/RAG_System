@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { Routes, Route, Navigate, useNavigate } from 'react-router-dom'
+import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
 import Sidebar from './components/Sidebar'
 import ChatHeader from './components/ChatHeader'
@@ -31,10 +31,18 @@ export default function App() {
   const [apiStatus, setApiStatus] = useState('loading') // 'loading' | 'online' | 'offline'
   const messagesEndRef = useRef(null)
   
-  const { isAuthenticated, fetchWithAuth, logout } = useAuth()
+  const { isAuthenticated, needsPassword, fetchWithAuth, logout } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
 
   const activeSession = sessions.find(s => s.id === activeId)
+
+  // Cancel authentication if the user navigates away from the auth flow while still needing a password
+  useEffect(() => {
+    if (location.pathname !== '/auth' && needsPassword) {
+      logout()
+    }
+  }, [location.pathname, needsPassword, logout])
 
   // Check API health on mount
   useEffect(() => {
@@ -48,6 +56,10 @@ export default function App() {
   useEffect(() => {
     if (isAuthenticated) {
       loadSessions()
+    } else {
+      // Clear sessions when logged out so they don't leak to the next user
+      setSessions([{ id: 'default', title: 'New Conversation', messages: [] }])
+      setActiveId('default')
     }
   }, [isAuthenticated])
 
@@ -59,12 +71,20 @@ export default function App() {
         if (data.sessions && data.sessions.length > 0) {
           const loadedSessions = data.sessions.map(s => ({
             id: s.session_id,
-            title: s.summary || 'Previous conversation',
-            messages: []
+            title: s.summary || 'SQL Session',
+            messages: (s.messages || []).map(m => ({
+              type: 'bot',
+              content: m.sql ? `Executed: \n${m.sql}` : m.question,
+              sql: m.sql,
+              data: m.row_preview
+            }))
           }))
           setSessions(loadedSessions)
           setActiveId(loadedSessions[0].id)
-          loadSessionMessages(loadedSessions[0].id)
+        } else {
+          // If user has no sessions, reset to default state
+          setSessions([{ id: 'default', title: 'New Conversation', messages: [] }])
+          setActiveId('default')
         }
       }
     } catch (e) {
@@ -173,6 +193,7 @@ export default function App() {
                   rowCount: data.rowCount,
                   attempts: data.attempts,
                   answer: data.answer,
+                  chartConfig: data.chartConfig,
                 }
                 updateMessages(activeId, [...prev, userMsg, aiMsg])
                 setLoading(false)
@@ -213,12 +234,12 @@ export default function App() {
     <Routes>
       <Route 
         path="/" 
-        element={isAuthenticated ? <Navigate to="/chat" replace /> : <HomePage onGetStarted={() => navigate('/auth')} />} 
+        element={isAuthenticated && !needsPassword ? <Navigate to="/chat" replace /> : <HomePage onGetStarted={() => navigate('/auth')} />} 
       />
       <Route 
         path="/auth" 
         element={
-          isAuthenticated ? <Navigate to="/chat" replace /> : (
+          isAuthenticated && !needsPassword ? <Navigate to="/chat" replace /> : (
             <div style={{position: 'relative'}}>
               <button 
                 className="back-btn"
@@ -235,7 +256,7 @@ export default function App() {
       <Route 
         path="/chat" 
         element={
-          isAuthenticated ? (
+          isAuthenticated && !needsPassword ? (
             <div className="app">
               <Sidebar
                 sessions={sessions}

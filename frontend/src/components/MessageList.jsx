@@ -1,4 +1,5 @@
 import SqlBlock from './SqlBlock'
+import ChartBlock from './ChartBlock'
 
 function ResultsTable({ columns, rows, rowCount, attempts }) {
     const badgeClass = attempts >= 3 ? 'badge attempts-3' : attempts === 2 ? 'badge attempts-2' : 'badge'
@@ -65,6 +66,7 @@ function AIMessage({ msg }) {
                 </div>
             )}
             {msg.sql && <SqlBlock code={msg.sql} />}
+            {msg.chartConfig && <ChartBlock config={msg.chartConfig} />}
             {msg.sql && (
                 <ResultsTable
                     columns={msg.columns || []}

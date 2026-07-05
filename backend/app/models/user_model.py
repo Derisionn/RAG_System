@@ -1,5 +1,6 @@
 from pydantic import BaseModel, EmailStr
 from datetime import datetime
+from typing import Optional
 
 class UserInDB(BaseModel):
     """
@@ -8,7 +9,9 @@ class UserInDB(BaseModel):
     """
     id: int
     email: EmailStr
-    hashed_password: str
+    hashed_password: Optional[str] = None   # None for OAuth-only users
+    display_name: Optional[str] = None
+    google_id: Optional[str] = None
     created_at: datetime
 
 class UserSession(BaseModel):

@@ -130,7 +130,7 @@ class RAGService:
 
     def _node_plan(self, state: AgentState) -> AgentState:
         print(f"\n[RAGService Node: plan] Generating execution plan...")
-        plan = self.intention.generate_plan(state["question"])
+        plan = self.intention.generate_plan(state["question"], state.get("history", {}))
         print(f"  [OK] Plan: {plan}")
         return {
             **state,
@@ -161,7 +161,7 @@ class RAGService:
         step = state.get("current_step", 0)
         plan = state.get("plan", [])
         step_params = plan[step].get("parameters", {}) if step < len(plan) else {}
-        task_prompt = step_params.get("message", "").strip() or state["question"]
+        task_prompt = (step_params.get("message") or "").strip() or state["question"]
 
         answer = self.conversational.generate_chat_response(task_prompt, state.get("history", {}))
         print(f"  [OK] Chat Response: {answer}")
@@ -285,7 +285,7 @@ class RAGService:
         step = state.get("current_step", 0)
         plan = state.get("plan", [])
         step_params = plan[step].get("parameters", {}) if step < len(plan) else {}
-        chart_hint = step_params.get("chart_type", "").strip()
+        chart_hint = (step_params.get("chart_type") or "").strip()
         chart_request = f"{state['question']} (chart type: {chart_hint})" if chart_hint else state["question"]
 
         config = self.charter.generate_chart_config(state.get("result"), chart_request)

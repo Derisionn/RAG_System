@@ -112,7 +112,7 @@ class ChatController:
             )
 
         columns = list(df.columns)
-        rows = df.head(100).to_dict(orient="records")
+        rows = json.loads(df.head(100).to_json(orient="records", date_format="iso"))
 
         # 4. Schedule background tasks for memory updates
         background_tasks.add_task(self._post_query_tasks, user_id, session_id, question, sql, rows, answer, history)
@@ -221,13 +221,13 @@ class ChatController:
             
         df = final_state.get("result")
         columns = list(df.columns) if df is not None else []
-        rows = df.head(100).to_dict(orient="records") if df is not None else []
+        rows = json.loads(df.head(100).to_json(orient="records", date_format="iso")) if df is not None else []
         answer = final_state.get("answer")
         chart_config = final_state.get("chart_config")
         
         background_tasks.add_task(self._post_query_tasks, user_id, session_id, question, sql, rows, answer, history)
 
-        yield f"data: {json.dumps({'step': 'complete', 'sql': sql, 'columns': columns, 'rows': rows, 'rowCount': len(df) if df is not None else 0, 'attempts': final_state.get('attempts', 1), 'answer': answer, 'chartConfig': chart_config})}\n\n"
+        yield f"data: {json.dumps({'step': 'complete', 'sql': sql, 'columns': columns, 'rows': rows, 'rowCount': len(df) if df is not None else 0, 'attempts': final_state.get('attempts', 1), 'answer': answer, 'chartConfig': chart_config}, default=str)}\n\n"
 
     def _post_query_tasks(self, user_id: str, session_id: str, question: str, sql: str, rows: list[dict], answer: str | None, current_history: dict):
         """Background tasks for saving messages, embedding Q&A pairs, and generating summaries."""
