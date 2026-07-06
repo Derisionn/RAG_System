@@ -20,14 +20,14 @@ from .routes.chat_routes import get_rag_service, get_mongo_repo
 async def lifespan(app: FastAPI):
     """Start-up: initialize service connections. Shut-down: close them."""
     print("[startup] Initializing SQL RAG Pipeline Service Layer...")
-    # Trigger lazy instantiation of both singletons
-    service = get_rag_service()
-    mongo = get_mongo_repo()
-    print("[startup] Services ready [OK]")
+    # Lazy instantiation deferred to the first request to prevent Render Port Scan Timeout
+    # service = get_rag_service()
+    # mongo = get_mongo_repo()
+    print("[startup] Services will load lazily on first request [OK]")
     yield
     print("[shutdown] Closing service connections...")
-    service.close()
-    mongo.close()
+    get_rag_service().close()
+    get_mongo_repo().close()
     print("[shutdown] Service cleanup done.")
 
 
