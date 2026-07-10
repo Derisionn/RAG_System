@@ -25,6 +25,8 @@ class ChatController:
     def __init__(self, rag_service: RAGService, mongo_repo: MongoRepository):
         self.rag_service = rag_service
         self.mongo_repo = mongo_repo
+        from ..services.cache_service import CacheService
+        self.cache = CacheService()
 
     def execute_query(self, req, question: str, session_id: str, background_tasks: BackgroundTasks, user_id: str) -> dict:
         """Coordinate with RAG service to run query and return formatted results."""
@@ -40,6 +42,23 @@ class ChatController:
             history = self.mongo_repo.get_history(user_id, session_id)
         except Exception as e:
             print(f"[ChatController] Warning: could not load history: {e}")
+
+        # Check exact question cache
+        req_cache_key = self.cache.generate_key("req", question.strip().lower())
+        cached_res = self.cache.get(req_cache_key)
+        if cached_res:
+            print("[ChatController] Exact Question Cache HIT!")
+            return {
+                "session_id": session_id,
+                "question": question,
+                "sql": cached_res["sql"],
+                "attempts": 1,
+                "columns": cached_res["columns"],
+                "rows": cached_res["rows"],
+                "row_count": len(cached_res["rows"]),
+                "answer": cached_res["answer"],
+                "chart_config": cached_res.get("chart_config"),
+            }
 
         # 2. Retrieve Semantic History from Pinecone
         try:
@@ -125,13 +144,20 @@ class ChatController:
         # Standard query has no "handshake" delay, so we just show the route
         route_str = getattr(req.state, "route_str", f"POST {req.url.path}")
         
+        cache_hits = []
+        if v_ms == 0.0 and total_time_ms > 0: cache_hits.append("Tier 1.5 (Vector)")
+        if 0 < g_ms < 15: cache_hits.append("Tier 2 (Graph)")
+        if 0 < e_ms < 15: cache_hits.append("Tier 3 (SQL Exec)")
+        cache_str = ", ".join(cache_hits) if cache_hits else "None"
+        
         box = (
             f"\n=================================================\n"
             f"Request Metrics\n\n"
             f"Connection         : {route_str}\n"
             f"Time to First Byte : N/A (Standard Request)\n"
             f"Request Time       : {total_time_ms / 1000.0:.2f} sec\n\n"
-            f"Tokens Used        : {usage_tracker['total_tokens']} (P: {usage_tracker['prompt_tokens']}, C: {usage_tracker['completion_tokens']})\n\n"
+            f"Tokens Used        : {usage_tracker['total_tokens']} (P: {usage_tracker['prompt_tokens']}, C: {usage_tracker['completion_tokens']})\n"
+            f"Cache Hits         : {cache_str}\n\n"
             f"Planner            : {int(planner_ms)} ms\n"
             f"Context Retriever  : {int(c_ms)} ms\n"
             f"Vector Retriever   : {int(v_ms)} ms\n"
@@ -144,7 +170,7 @@ class ChatController:
         import logging
         logging.getLogger("uvicorn").info(box)
 
-        return {
+        result_dict = {
             "session_id": session_id,
             "question": question,
             "sql": sql,
@@ -155,6 +181,12 @@ class ChatController:
             "answer": answer,
             "chart_config": chart_config,
         }
+        
+        # Save to cache
+        if not error:
+            self.cache.set(req_cache_key, result_dict, ttl_seconds=3600)
+            
+        return result_dict
 
     def execute_query_stream(self, req, question: str, session_id: str, background_tasks: BackgroundTasks, user_id: str):
         from ..config.hf_client import request_token_usage
@@ -188,6 +220,26 @@ class ChatController:
             history = self.mongo_repo.get_history(user_id, session_id)
         except Exception as e:
             print(f"[ChatController] Warning: could not load history: {e}")
+
+        req_cache_key = self.cache.generate_key("req", question.strip().lower())
+        cached_res = self.cache.get(req_cache_key)
+        if cached_res:
+            print("[ChatController] Exact Question Cache HIT for streaming!")
+            yield f"data: {json.dumps({'step': 'complete', 'sql': cached_res['sql'], 'columns': cached_res['columns'], 'rows': cached_res['rows'], 'rowCount': cached_res['row_count'], 'attempts': 1, 'answer': cached_res['answer'], 'chartConfig': cached_res.get('chart_config')}, default=str)}\n\n"
+            
+            # Emit metrics
+            total_time_ms = (time.time() - stream_start_time) * 1000
+            route_str = getattr(req.state, "route_str", f"POST {req.url.path}")
+            box = (
+                f"\n=================================================\n"
+                f"Request Metrics\n\n"
+                f"Connection         : {route_str}\n"
+                f"Request Time       : {total_time_ms / 1000.0:.2f} sec\n\n"
+                f"Cache Hits         : Tier 1 (Exact Question)\n\n"
+                f"================================================="
+            )
+            logger.info(box)
+            return
 
         try:
             yield f"data: {json.dumps({'step': 'semantic_search', 'message': 'Searching past context...'})}\n\n"
@@ -334,13 +386,21 @@ class ChatController:
             a_ms = final_state.get('ans_gen_ms', 0) if final_state else 0
             route_str = getattr(req.state, "route_str", f"POST {req.url.path}")
             handshake_ms = getattr(req.state, "handshake_ms", 0.0)
+            
+            cache_hits = []
+            if v_ms == 0.0 and total_time_ms > 0: cache_hits.append("Tier 1.5 (Vector)")
+            if 0 < g_ms < 15: cache_hits.append("Tier 2 (Graph)")
+            if 0 < e_ms < 15: cache_hits.append("Tier 3 (SQL Exec)")
+            cache_str = ", ".join(cache_hits) if cache_hits else "None"
+
             box = (
                 f"\n=================================================\n"
                 f"Request Metrics\n\n"
                 f"Connection         : {route_str}\n"
                 f"Time to First Byte : {handshake_ms:.2f} ms\n"
                 f"Request Time       : {total_time_ms / 1000.0:.2f} sec\n\n"
-                f"Tokens Used        : {usage_tracker['total_tokens']} (P: {usage_tracker['prompt_tokens']}, C: {usage_tracker['completion_tokens']})\n\n"
+                f"Tokens Used        : {usage_tracker['total_tokens']} (P: {usage_tracker['prompt_tokens']}, C: {usage_tracker['completion_tokens']})\n"
+                f"Cache Hits         : {cache_str}\n\n"
                 f"Planner            : {int(planner_ms)} ms\n"
                 f"Context Retriever  : {int(context_ms)} ms\n"
                 f"Vector Retriever   : {int(v_ms)} ms\n"
@@ -351,7 +411,6 @@ class ChatController:
                 f"================================================="
             )
             logger.info(box)
-            request_token_usage.reset(token)
             return
             
         df = final_state.get("result")
@@ -361,6 +420,17 @@ class ChatController:
         chart_config = final_state.get("chart_config")
         
         background_tasks.add_task(self._post_query_tasks, user_id, session_id, question, sql, rows, answer, history)
+
+        result_dict = {
+            "sql": sql,
+            "columns": columns,
+            "rows": rows,
+            "row_count": len(df) if df is not None else 0,
+            "answer": answer,
+            "chart_config": chart_config
+        }
+        
+        self.cache.set(req_cache_key, result_dict, ttl_seconds=3600)
 
         yield f"data: {json.dumps({'step': 'complete', 'sql': sql, 'columns': columns, 'rows': rows, 'rowCount': len(df) if df is not None else 0, 'attempts': final_state.get('attempts', 1), 'answer': answer, 'chartConfig': chart_config}, default=str)}\n\n"
         

@@ -9,20 +9,31 @@ class RetrievalService:
         self.embedding_srv = embedding_srv
         self.graph_srv = graph_srv
         self.planner = planner
+        from .cache_service import CacheService
+        self.cache = CacheService()
 
     def retrieve_schema_elements(self, question: str) -> tuple[list[str], list[dict], list[list[str]], float, float]:
         """Perform full hybrid retrieval: vector search + plan filtering + Cypher join path extraction."""
         import time
         
-        # 1. Embed question & Query Pinecone
-        print(f"\n[RetrievalService] Embedding query: '{question}'")
+        cache_key = self.cache.generate_key("vector_retrieval", question.strip().lower())
+        cached_result = self.cache.get(cache_key)
+        
         t0 = time.time()
-        query_vec = self.embedding_srv.embed_text(question)
-        results = self.pinecone_repo.query(query_vec, top_k=20)
-        vector_ms = (time.time() - t0) * 1000
-
-        # 3. Organize with Planner
-        tables, columns = self.planner.plan_schema(results["matches"])
+        if cached_result:
+            print("[RetrievalService] Vector Retrieval Cache HIT!")
+            tables = cached_result["tables"]
+            columns = cached_result["columns"]
+            vector_ms = 0.0
+        else:
+            print(f"\n[RetrievalService] Embedding query: '{question}'")
+            query_vec = self.embedding_srv.embed_text(question)
+            results = self.pinecone_repo.query(query_vec, top_k=20)
+            
+            tables, columns = self.planner.plan_schema(results["matches"])
+            
+            self.cache.set(cache_key, {"tables": list(tables), "columns": columns}, ttl_seconds=3600 * 24)
+            vector_ms = (time.time() - t0) * 1000
 
         # 4. Find join paths with GraphService
         t1 = time.time()

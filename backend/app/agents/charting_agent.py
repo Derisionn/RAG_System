@@ -19,7 +19,7 @@ Output STRICTLY JSON with the following structure:
 {{
   "type": "bar" | "line" | "pie",
   "xAxisKey": "string (the primary category column name)",
-  "dataKeys": ["string (value column 1)", "string (value column 2)"],
+  "yAxisKey": "string (the numerical value column)",
   "colors": ["#hex1", "#hex2"]
 }}
 """
@@ -47,6 +47,6 @@ Output STRICTLY JSON with the following structure:
         return {
             "type": chart_type if chart_type in ["bar", "line", "pie"] else "bar",
             "xAxisKey": keys[0],
-            "dataKeys": keys[1:3] if len(keys) > 1 else keys,
+            "yAxisKey": keys[1] if len(keys) > 1 else keys[0],
             "colors": ["#8884d8", "#82ca9d"]
         }

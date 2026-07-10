@@ -49,14 +49,17 @@ HF_API_TOKEN    = os.getenv("HF_API_TOKEN", "")              # set in Render env
 HF_API_URL      = f"https://router.huggingface.co/hf-inference/models/{EMBEDDING_MODEL}/pipeline/feature-extraction"
 
 # ── Retrieval ─────────────────────────────────────────────────────────────────
-TOP_K_TABLES    = 5    # number of tables returned by semantic search
-TOP_K_COLUMNS   = 10   # number of columns returned by semantic search
+TOP_K_TABLES    = 6    # number of tables returned by semantic search
+TOP_K_COLUMNS   = 40   # number of columns returned by semantic search
 
 # =============================================================================
 # Hugging Face Configuration (replaces Gemini)
 # =============================================================================
 HF_MODEL = os.getenv("HF_MODEL", "meta-llama/Meta-Llama-3-8B-Instruct")
 HUGGINGFACE_API_TOKEN = os.environ.get("HUGGINGFACE_API_TOKEN", "")  # set in env
+
+# ── Caching ───────────────────────────────────────────────────────────────────
+REDIS_URL = os.getenv("REDIS_URL", "")
 
 # ── Google OAuth 2.0 ──────────────────────────────────────────────────────────
 GOOGLE_CLIENT_ID     = os.getenv("GOOGLE_CLIENT_ID", "")

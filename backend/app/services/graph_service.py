@@ -1,9 +1,12 @@
 from neo4j import GraphDatabase
 from ..config.config import NEO4J_URI, NEO4J_USER, NEO4J_PWD
 
+from .cache_service import CacheService
+
 class GraphService:
     def __init__(self):
         self.driver = self._make_driver()
+        self.cache = CacheService()
 
     def _make_driver(self) -> GraphDatabase.driver:
         """Create a resilient connection driver to Neo4j."""
@@ -25,6 +28,14 @@ class GraphService:
         paths: list[list[str]] = []
         if len(tables) < 2:
             return paths
+            
+        # Check cache first
+        sorted_tables = sorted(tables)
+        cache_key = self.cache.generate_key("graph_path", ",".join(sorted_tables))
+        cached_paths = self.cache.get(cache_key)
+        if cached_paths is not None:
+            print("  [GraphService] Cache HIT for join paths.")
+            return cached_paths
 
         try:
             paths = self._execute_find_paths(cypher, tables)
@@ -37,6 +48,11 @@ class GraphService:
             except Exception as retry_err:
                 print(f"  [ERROR] Graceful degradation: Neo4j retry failed: {retry_err}. Proceeding without join paths.")
                 paths = []
+                
+        # Save to cache if successful (24 hour TTL)
+        if paths:
+            self.cache.set(cache_key, paths, ttl_seconds=86400)
+            
         return paths
 
     def _execute_find_paths(self, cypher: str, tables: list[str]) -> list[list[str]]:

@@ -153,10 +153,11 @@ Rules:
 2. DO NOT use T-SQL or Microsoft SQL Server specific grammar. Use standard PostgreSQL dialect.
 3. For limiting results, use 'LIMIT N' at the end of the query. DO NOT use T-SQL 'TOP N'.
 4. CRITICAL: PostgreSQL stores all identifiers in lowercase unless they were created with double-quotes. NEVER use double-quotes around schema names, table names, or column names. Always write them in lowercase without quotes (e.g., sales.salesorderheader, not "sales"."SalesOrderHeader"). Using quoted mixed-case identifiers WILL cause "relation does not exist" errors.
-5. Ensure all joined tables are linked correctly based on keys.
+5. Ensure all joined tables are linked correctly based on keys. NEVER use 'ON 1' or 'ON true' for joins. You MUST specify valid boolean join conditions using actual column names (e.g. 'ON a.id = b.a_id').
 6. Only return the raw SQL code. DO NOT wrap it in any comments or markup except the query itself.
 7. If the question refers to results from a previous query (e.g. "their", "those", "the same"), use the Conversation History above to understand the context.
-8. All schema names, table names, and column names must be fully lowercase and unquoted.
+14. All schema names, table names, and column names must be fully lowercase and unquoted.
+9. CRITICAL RULE: The 'Suggested Join Relationships' show possible graph paths between tables, but you MUST NOT blindly join all tables listed in a path! ONLY join the minimum necessary tables needed to answer the question, completely ignoring any extra, irrelevant tables (like staff or store if calculating simple sales).
 
 Question: {question}
 SQL:"""
