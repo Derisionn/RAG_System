@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, BackgroundTasks
+from fastapi import APIRouter, Depends, BackgroundTasks, Request
 from ..schemas.request_models import QueryRequest
 from ..schemas.response_models import QueryResponse, SQLOnlyResponse
 from ..controllers.chat_controller import ChatController
@@ -37,15 +37,15 @@ def get_chat_controller(
 from fastapi.responses import StreamingResponse
 
 @router.post("", response_model=QueryResponse)
-def execute_rag_query(request: QueryRequest, background_tasks: BackgroundTasks, controller: ChatController = Depends(get_chat_controller), current_user: dict = Depends(get_current_user)):
+def execute_rag_query(req: Request, request: QueryRequest, background_tasks: BackgroundTasks, controller: ChatController = Depends(get_chat_controller), current_user: dict = Depends(get_current_user)):
     """Full RAG query execution against Supabase PostgreSQL database."""
-    res = controller.execute_query(request.question, request.session_id, background_tasks, current_user["id"])
+    res = controller.execute_query(req, request.question, request.session_id, background_tasks, current_user["id"])
     return QueryResponse(**res)
 
 @router.post("/stream")
-def stream_rag_query(request: QueryRequest, background_tasks: BackgroundTasks, controller: ChatController = Depends(get_chat_controller), current_user: dict = Depends(get_current_user)):
+def stream_rag_query(req: Request, request: QueryRequest, background_tasks: BackgroundTasks, controller: ChatController = Depends(get_chat_controller), current_user: dict = Depends(get_current_user)):
     """Stream execution progress for better UX using Server-Sent Events."""
-    generator = controller.execute_query_stream(request.question, request.session_id, background_tasks, current_user["id"])
+    generator = controller.execute_query_stream(req, request.question, request.session_id, background_tasks, current_user["id"])
     return StreamingResponse(generator, media_type="text/event-stream")
 
 

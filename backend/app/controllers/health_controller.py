@@ -12,7 +12,7 @@ class HealthController:
             "pinecone": "unknown",
             "neo4j": "unknown",
             "supabase": "unknown",
-            "gemini": "unknown",
+            "llm": "unknown",
             "mongodb": "unknown",
         }
 
@@ -37,12 +37,12 @@ class HealthController:
         except Exception as e:
             results["supabase"] = f"error: {str(e)[:120]}"
 
-        # Gemini
+        # LLM (Hugging Face)
         try:
             resp_text = self.rag_service.reasoner.generate_sql("Reply with: ok")
-            results["gemini"] = "ok" if resp_text else "no response"
+            results["llm"] = "ok" if resp_text else "no response"
         except Exception as e:
-            results["gemini"] = f"error: {str(e)[:120]}"
+            results["llm"] = f"error: {str(e)[:120]}"
 
         # MongoDB
         try:

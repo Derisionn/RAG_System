@@ -1,20 +1,19 @@
 import time
 import json
-from google.api_core.exceptions import ResourceExhausted
-from ..config.gemini_client import gemini_structured_model, gemini_model, Plan
+from ..config.hf_client import hf_structured_model, hf_model
 
 
 class IntentionAgent:
     def __init__(self):
-        # Structured output model — forces Gemini to return valid JSON matching Plan schema
-        self.llm = gemini_structured_model
+        # Structured output model — attempts to force JSON
+        self.llm = hf_structured_model
         # Plain fallback model
-        self.llm_plain = gemini_model
+        self.llm_plain = hf_model
 
     def generate_plan(self, question: str, history: dict | None = None, max_retries: int = 3) -> list[dict]:
         """
         Parses the user's question and returns a list of task dicts.
-        Uses Gemini Structured Outputs to guarantee valid JSON matching the Plan schema.
+        Uses Hugging Face wrapped in a JSON prompt.
         Available actions: 'chat', 'sql_query', 'generate_chart'.
         """
         prompt = f"""You are the Master Orchestrator for a Database AI.
@@ -30,21 +29,21 @@ Each task must have an 'action' and a 'parameters' object.
 
 Example 1 (multi-step):
 User: "Hi, what was the revenue last month?"
-→ tasks: [chat (message="Hi"), sql_query (metric="revenue", time="last month")]
+→ {{"tasks": [{{"action": "chat", "parameters": {{"message": "Hi"}}}}, {{"action": "sql_query", "parameters": {{"metric": "revenue", "time": "last month"}}}}]}}
 
 Example 2 (investigation):
 User: "Why are our electronics sales declining?"
-→ tasks: [analyze (topic="electronics sales decline")]
+→ {{"tasks": [{{"action": "analyze", "parameters": {{"topic": "electronics sales decline"}}}}]}}
 
-Example 2 (chart):
+Example 3 (chart):
 User: "Plot a bar chart of the top 5 customers."
-→ tasks: [sql_query (query="top 5 customers by revenue"), generate_chart (chart_type="bar")]
+→ {{"tasks": [{{"action": "sql_query", "parameters": {{"query": "top 5 customers by revenue"}}}}, {{"action": "generate_chart", "parameters": {{"chart_type": "bar"}}}}]}}
 """
 
         history_text = ""
         if history and history.get("messages"):
             recent_lines = ["\nRecent Conversation History:"]
-            # Get last 3 interactions to provide context for pronouns (e.g. "it", "the graph")
+            # Get last 3 interactions to provide context for pronouns
             for msg in history["messages"][-3:]:
                 recent_lines.append(f"User: {msg['question']}\nAssistant: {msg.get('answer', '...')}")
             history_text = "\n".join(recent_lines) + "\n"
@@ -54,19 +53,12 @@ User: "Plot a bar chart of the top 5 customers."
         delay = 1.0
         for attempt in range(max_retries):
             try:
-                response = self.llm.generate_content(prompt)
-                # With response_mime_type=application/json, response.text is guaranteed clean JSON
-                plan_data = json.loads(response.text)
+                response_text = self.llm.invoke(prompt)
+                plan_data = json.loads(response_text)
                 tasks = plan_data.get("tasks", [])
                 if not tasks:
                     return [{"action": "sql_query", "parameters": {}}]
                 return tasks
-            except ResourceExhausted as e:
-                if attempt == max_retries - 1:
-                    raise e
-                print(f"  [WARNING] IntentionAgent rate limited. Retrying in {delay}s...")
-                time.sleep(delay)
-                delay *= 2
             except Exception as e:
                 print(f"[IntentionAgent] Error generating plan (attempt {attempt + 1}): {e}")
                 if attempt == max_retries - 1:

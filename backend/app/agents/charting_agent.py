@@ -1,61 +1,52 @@
 import time
 import json
 import pandas as pd
-from google.api_core.exceptions import ResourceExhausted
-from ..config.gemini_client import gemini_model
+from ..config.hf_client import hf_model
 
 class ChartingAgent:
     def __init__(self):
-        self.llm = gemini_model
+        self.llm = hf_model
 
-    def generate_chart_config(self, df: pd.DataFrame, request: str, max_retries: int = 3) -> dict:
-        """
-        Takes raw data and generates a JSON configuration for a frontend charting library.
-        Returns a dictionary with 'type' and 'data' (or whatever format the frontend needs).
-        """
-        if df is None or df.empty:
-            return {"error": "No data available to chart."}
-            
-        # Sample the data to give the LLM context of columns and values
-        data_subset = df.head(5).to_dict(orient="records")
-        columns = list(df.columns)
-        
-        prompt = f"""You are a data visualization expert.
-The user wants to chart the following data based on this request: "{request}"
+    def generate_chart_config(self, chart_type: str, data: list[dict], max_retries: int = 3) -> dict:
+        prompt = f"""You are a Frontend Data Visualization Expert.
+Your task is to generate a JSON configuration for Recharts to visualize the provided data.
+The requested chart type is: {chart_type}
 
-Here are the columns: {columns}
-Here is a sample of the data: {data_subset}
+Data (up to 50 rows):
+{json.dumps(data[:50])}
 
-Determine the best chart type (e.g., 'bar', 'line', 'pie') and map the data columns to appropriate axes.
-Return ONLY a valid JSON object with the following structure:
+Output STRICTLY JSON with the following structure:
 {{
-  "chartType": "bar",
-  "xAxisKey": "column_name_for_x",
-  "yAxisKey": "column_name_for_y",
-  "description": "A brief sentence explaining the chart"
+  "type": "bar" | "line" | "pie",
+  "xAxisKey": "string (the primary category column name)",
+  "dataKeys": ["string (value column 1)", "string (value column 2)"],
+  "colors": ["#hex1", "#hex2"]
 }}
-
-Do not include markdown tags like ```json."""
-
+"""
         delay = 1.0
         for attempt in range(max_retries):
             try:
-                response = self.llm.generate_content(prompt)
-                text = response.text.strip()
-                if text.startswith("```json"):
-                    text = text[7:]
-                if text.endswith("```"):
-                    text = text[:-3]
+                response_text = self.llm.invoke(prompt)
                 
-                config = json.loads(text.strip())
-                # Attach the actual raw data to the config so the frontend has it
-                config["data"] = json.loads(df.to_json(orient="records", date_format="iso"))
+                import re
+                text = response_text.strip()
+                match = re.search(r"(\{.*\})", text.replace('\n', ' '), re.DOTALL)
+                if match:
+                    text = match.group(1).strip()
+                
+                config = json.loads(text)
                 return config
-            except ResourceExhausted as e:
-                if attempt == max_retries - 1:
-                    raise e
+            except Exception as e:
+                print(f"[ChartingAgent] Error generating config (attempt {attempt + 1}): {e}")
                 time.sleep(delay)
                 delay *= 2
-            except Exception as e:
-                print(f"[ChartingAgent] Error generating chart config: {e}")
-                return {"error": "Failed to generate chart configuration."}
+
+        # Fallback config
+        if not data: return {}
+        keys = list(data[0].keys())
+        return {
+            "type": chart_type if chart_type in ["bar", "line", "pie"] else "bar",
+            "xAxisKey": keys[0],
+            "dataKeys": keys[1:3] if len(keys) > 1 else keys,
+            "colors": ["#8884d8", "#82ca9d"]
+        }

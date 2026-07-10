@@ -34,6 +34,12 @@ class AgentState(TypedDict):
     attempts: int
     validation_error: Optional[str]
     answer: Optional[str]
+    planner_time_ms: Optional[float]
+    vector_ms: Optional[float]
+    graph_ms: Optional[float]
+    sql_gen_ms: Optional[float]
+    sql_exec_ms: Optional[float]
+    ans_gen_ms: Optional[float]
 
 class RAGService:
     def __init__(self):
@@ -129,14 +135,23 @@ class RAGService:
     # ── Nodes ─────────────────────────────────────────────────────────────────
 
     def _node_plan(self, state: AgentState) -> AgentState:
+        import time
+        import logging
+        logger = logging.getLogger("uvicorn")
         print(f"\n[RAGService Node: plan] Generating execution plan...")
+        
+        start_time = time.time()
         plan = self.intention.generate_plan(state["question"], state.get("history", {}))
+        planner_time_ms = (time.time() - start_time) * 1000
+        
         print(f"  [OK] Plan: {plan}")
+        
         return {
             **state,
             "plan": plan,
             "current_step": 0,
-            "accumulated_answers": []
+            "accumulated_answers": [],
+            "planner_time_ms": planner_time_ms
         }
 
     def _node_dispatcher(self, state: AgentState) -> AgentState:
@@ -188,12 +203,14 @@ class RAGService:
         retrieval_query = " ".join(parts) if parts else state["question"]
         print(f"  -> Retrieval query: '{retrieval_query}'")
 
-        tables, columns, paths = self.retrieval_srv.retrieve_schema_elements(retrieval_query)
+        tables, columns, paths, vector_ms, graph_ms = self.retrieval_srv.retrieve_schema_elements(retrieval_query)
         return {
             **state,
             "tables": tables,
             "columns": columns,
             "paths": paths,
+            "vector_ms": vector_ms,
+            "graph_ms": graph_ms,
             # ── Reset SQL pipeline state for this fresh step ──
             "attempts": 0,
             "sql": "",
@@ -217,8 +234,13 @@ class RAGService:
                 state["prompt"], state["sql"], state["error"] or state["validation_error"] or ""
             )
 
+        import time
+        t0 = time.time()
         sql = self.reasoner.generate_sql(prompt)
+        sql_gen_time = (time.time() - t0) * 1000
         print(f"  -> SQL generated:\n{sql[:300]}")
+
+        current_sql_ms = state.get("sql_gen_ms", 0.0) or 0.0
 
         return {
             **state,
@@ -227,6 +249,7 @@ class RAGService:
             "attempts": attempt,
             "error": None,
             "validation_error": None,
+            "sql_gen_ms": current_sql_ms + sql_gen_time,
         }
 
     def _node_validate_sql(self, state: AgentState) -> AgentState:
@@ -243,16 +266,17 @@ class RAGService:
         }
 
     def _node_execute_sql(self, state: AgentState) -> AgentState:
-        print(f"\n[RAGService Node: execute_sql] Running query on Supabase...")
+        print(f"\n[RAGService Node: execute_sql] Executing SQL against database...")
+        import time
+        t0 = time.time()
         try:
             df = self.postgres_repo.execute_query(state["sql"])
-            print(f"  [OK] Execution successful ({len(df)} rows).")
-            return {
-                **state,
-                "result": df,
-                "error": None
-            }
+            exec_time = (time.time() - t0) * 1000
+            print(f"  -> Execution successful, retrieved {len(df)} rows.")
+            current_exec_ms = state.get("sql_exec_ms", 0.0) or 0.0
+            return {**state, "result": df, "error": None, "sql_exec_ms": current_exec_ms + exec_time}
         except Exception as e:
+            exec_time = (time.time() - t0) * 1000
             err_str = str(e)
             print(f"  [ERROR] Execution failed: {err_str[:200]}")
             
@@ -263,20 +287,26 @@ class RAGService:
                 "result": None,
                 "error": err_str,
                 "accumulated_answers": acc,
-                "current_step": state["current_step"] + 1
+                "current_step": state["current_step"] + 1,
+                "sql_exec_ms": state.get("sql_exec_ms", 0.0) + exec_time
             }
 
     def _node_generate_answer(self, state: AgentState) -> AgentState:
         print(f"\n[RAGService Node: generate_answer] Generating natural language answer...")
+        import time
+        t0 = time.time()
         answer = self.reasoner.generate_answer(state["question"], state["result"])
+        ans_ms = (time.time() - t0) * 1000
         print(f"  [OK] Answer: {answer}")
         
         acc = state.get("accumulated_answers", []) + [answer]
+        current_ans_ms = state.get("ans_gen_ms", 0.0) or 0.0
         return {
             **state,
             "answer": answer,
             "accumulated_answers": acc,
-            "current_step": state["current_step"] + 1
+            "current_step": state["current_step"] + 1,
+            "ans_gen_ms": current_ans_ms + ans_ms
         }
         
     def _node_generate_chart(self, state: AgentState) -> AgentState:
@@ -288,13 +318,23 @@ class RAGService:
         chart_hint = (step_params.get("chart_type") or "").strip()
         chart_request = f"{state['question']} (chart type: {chart_hint})" if chart_hint else state["question"]
 
-        config = self.charter.generate_chart_config(state.get("result"), chart_request)
+        df = state.get("result")
+        data = df.to_dict(orient="records") if df is not None and not df.empty else []
+        config = self.charter.generate_chart_config(chart_request, data)
         print(f"  [OK] Chart Config Generated")
+        
+        adapted_config = {
+            "chartType": config.get("type", "bar"),
+            "xAxisKey": config.get("xAxisKey", ""),
+            "yAxisKey": config.get("dataKeys", [""])[0] if config.get("dataKeys") else config.get("yAxisKey", ""),
+            "description": f"Chart based on {state['question']}",
+            "data": data
+        }
         
         # We don't add chart raw JSON to accumulated_answers, it's just saved in state
         return {
             **state,
-            "chart_config": config,
+            "chart_config": adapted_config,
             "current_step": state["current_step"] + 1
         }
 
@@ -365,7 +405,7 @@ class RAGService:
 
     # ── Pipeline Interface ────────────────────────────────────────────────────
 
-    def execute_rag(self, question: str, history: dict | None = None) -> tuple[str, pd.DataFrame, Optional[str], Optional[str], Optional[dict]]:
+    def execute_rag(self, question: str, history: dict | None = None) -> tuple[str, pd.DataFrame, Optional[str], Optional[str], Optional[dict], float, float, float, float, float, float]:
         initial_state: AgentState = {
             "question": question,
             "plan": [],
@@ -392,8 +432,14 @@ class RAGService:
         error = final_state.get("error") or final_state.get("validation_error")
         answer = final_state.get("answer")
         chart_config = final_state.get("chart_config")
+        planner_time_ms = final_state.get("planner_time_ms", 0)
+        vector_ms = final_state.get("vector_ms", 0)
+        graph_ms = final_state.get("graph_ms", 0)
+        sql_gen_ms = final_state.get("sql_gen_ms", 0)
+        sql_exec_ms = final_state.get("sql_exec_ms", 0)
+        ans_gen_ms = final_state.get("ans_gen_ms", 0)
 
-        return sql, df, error, answer, chart_config
+        return sql, df, error, answer, chart_config, planner_time_ms, vector_ms, graph_ms, sql_gen_ms, sql_exec_ms, ans_gen_ms
 
     def execute_rag_stream(self, question: str, history: dict | None = None) -> Generator[tuple[str, AgentState], None, None]:
         initial_state: AgentState = {

@@ -1,27 +1,46 @@
 import time
 import pandas as pd
-from google.api_core.exceptions import ResourceExhausted
-from ..config.gemini_client import gemini_model
+from ..config.hf_client import hf_model
 
 class ReasoningAgent:
     def __init__(self):
-        self.llm = gemini_model
+        self.llm = hf_model
 
     def generate_sql(self, prompt: str, max_retries: int = 5) -> str:
-        """Call Gemini LLM with exponential backoff on ResourceExhausted (429) rate limit."""
+        """Call LLM with exponential backoff on failures."""
+        import re
         delay = 2.0
         for attempt in range(max_retries):
             try:
-                response = self.llm.generate_content(prompt)
-                return response.text.strip().replace("```sql", "").replace("```", "").strip()
-            except ResourceExhausted as e:
+                response_text = self.llm.invoke(prompt)
+                
+                clean = response_text.strip()
+                # 1. Try to extract from a markdown code block
+                match = re.search(r"```(?:sql|postgresql)?(.*?)```", clean, re.DOTALL | re.IGNORECASE)
+                if match:
+                    clean = match.group(1).strip()
+                else:
+                    # 2. Otherwise, find the first SELECT or WITH keyword
+                    idx_select = clean.upper().find("SELECT ")
+                    idx_with = clean.upper().find("WITH ")
+                    
+                    if idx_select != -1 and idx_with != -1:
+                        idx = min(idx_select, idx_with)
+                    elif idx_select != -1:
+                        idx = idx_select
+                    elif idx_with != -1:
+                        idx = idx_with
+                    else:
+                        idx = 0
+                    clean = clean[idx:].strip()
+                
+                return clean
+            except Exception as e:
                 if attempt == max_retries - 1:
                     raise e
-                print(f"  [WARNING] Gemini Rate Limit Exceeded (429). Retrying in {delay}s...")
+                print(f"  [WARNING] LLM failure. Retrying in {delay}s...")
                 time.sleep(delay)
                 delay *= 2
-            except Exception as e:
-                raise e
 
     def summarize_history(self, messages: list[dict], max_retries: int = 3) -> str:
         """Ask Gemini to summarize the older conversation history."""
@@ -43,15 +62,12 @@ Summary:"""
         delay = 2.0
         for attempt in range(max_retries):
             try:
-                response = self.llm.generate_content(prompt)
-                return response.text.strip()
-            except ResourceExhausted as e:
+                return self.llm.invoke(prompt).strip()
+            except Exception as e:
                 if attempt == max_retries - 1:
                     raise e
                 time.sleep(delay)
                 delay *= 2
-            except Exception as e:
-                raise e
 
     def generate_short_title(self, question: str, max_retries: int = 2) -> str:
         """Generate a short 3-5 word title for a new session based on the first question."""
@@ -59,15 +75,12 @@ Summary:"""
         delay = 1.0
         for attempt in range(max_retries):
             try:
-                response = self.llm.generate_content(prompt)
-                return response.text.strip().replace('"', '')
-            except ResourceExhausted as e:
+                return self.llm.invoke(prompt).strip().replace('"', '')
+            except Exception as e:
                 if attempt == max_retries - 1:
-                    raise e
+                    return ""
                 time.sleep(delay)
                 delay *= 2
-            except Exception as e:
-                return ""
 
     def build_prompt(self, question: str, tables: list[str], columns: list[dict], paths: list[list[str]], history: dict | None = None) -> str:
         """Build standard LLM prompt instructing it to write Supabase compatible PostgreSQL queries."""
@@ -190,13 +203,10 @@ Natural Language Answer:"""
         delay = 1.0
         for attempt in range(max_retries):
             try:
-                response = self.llm.generate_content(prompt)
-                return response.text.strip()
-            except ResourceExhausted as e:
-                if attempt == max_retries - 1:
-                    raise e
-                time.sleep(delay)
-                delay *= 2
+                return self.llm.invoke(prompt).strip()
             except Exception as e:
                 print(f"[ReasoningAgent] Error generating answer: {e}")
-                return "Here are the results for your query."
+                if attempt == max_retries - 1:
+                    return "Here are the results for your query."
+                time.sleep(delay)
+                delay *= 2

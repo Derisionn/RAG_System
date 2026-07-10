@@ -1,10 +1,9 @@
 import time
-from google.api_core.exceptions import ResourceExhausted
-from ..config.gemini_client import gemini_model
+from ..config.hf_client import hf_model
 
 class ConversationalAgent:
     def __init__(self):
-        self.llm = gemini_model
+        self.llm = hf_model
 
     def synthesize_answers(self, question: str, answers: list[str], max_retries: int = 3) -> str:
         """Blend multiple execution step outputs into a single cohesive response."""
@@ -29,16 +28,13 @@ Combined Response:"""
         delay = 1.0
         for attempt in range(max_retries):
             try:
-                response = self.llm.generate_content(prompt)
-                return response.text.strip()
-            except ResourceExhausted as e:
-                if attempt == max_retries - 1:
-                    raise e
-                time.sleep(delay)
-                delay *= 2
+                return self.llm.invoke(prompt).strip()
             except Exception as e:
                 print(f"[ConversationalAgent] Error synthesizing answers: {e}")
-                return "\n".join(answers)
+                if attempt == max_retries - 1:
+                    return "\n".join(answers)
+                time.sleep(delay)
+                delay *= 2
 
     def generate_chat_response(self, question: str, history: dict | None = None, max_retries: int = 3) -> str:
         """Generate a natural conversational response for non-SQL queries."""
@@ -75,13 +71,8 @@ Response:"""
         delay = 1.0
         for attempt in range(max_retries):
             try:
-                response = self.llm.generate_content(prompt)
-                return response.text.strip()
-            except ResourceExhausted as e:
-                if attempt == max_retries - 1:
-                    raise e
-                time.sleep(delay)
-                delay *= 2
+                response = self.llm.invoke(prompt)
+                return response.strip()
             except Exception as e:
                 print(f"[ConversationalAgent] Error generating chat response: {e}")
                 return "Hello! I am ready to help you query your database. What would you like to know?"

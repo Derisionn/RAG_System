@@ -7,27 +7,16 @@ from ..services.rag_service import RAGService
 from ..repositories.mongodb_repository import MongoRepository
 from ..config.config import MAX_RETRIES, PINECONE_HISTORY_NAMESPACE, PINECONE_CHAT_HISTORY_NAMESPACE, SUMMARY_TRIGGER_THRESHOLD
 
-# Google API exception — imported defensively so we can catch quota errors
-try:
-    from google.api_core.exceptions import ResourceExhausted as _ResourceExhausted
-except ImportError:
-    _ResourceExhausted = None
-
-
 def _is_quota_error(exc: Exception) -> bool:
-    """Return True if exc is a Gemini rate-limit / quota-exhausted error."""
-    if _ResourceExhausted and isinstance(exc, _ResourceExhausted):
-        return True
+    """Return True if exc is a rate-limit error (HTTP 429)."""
     msg = str(exc).lower()
-    return any(kw in msg for kw in ("resourceexhausted", "quota exceeded", "429", "rate limit", "resource_exhausted"))
-
+    return any(kw in msg for kw in ("429", "rate limit", "too many requests"))
 
 _QUOTA_DETAIL = {
-    "message": "Gemini API free-tier daily quota exceeded (limit: 20 requests/day).",
+    "message": "Hugging Face API free-tier rate limit exceeded.",
     "action": (
-        "Wait until your quota resets (usually midnight Pacific Time) "
-        "or upgrade to a pay-as-you-go Gemini API plan at "
-        "https://ai.google.dev/gemini-api/docs/rate-limits"
+        "The free Hugging Face API is currently experiencing high traffic. "
+        "Please wait a few seconds and try again, or consider upgrading to a PRO account."
     ),
 }
 
@@ -37,10 +26,16 @@ class ChatController:
         self.rag_service = rag_service
         self.mongo_repo = mongo_repo
 
-    def execute_query(self, question: str, session_id: str, background_tasks: BackgroundTasks, user_id: str) -> dict:
+    def execute_query(self, req, question: str, session_id: str, background_tasks: BackgroundTasks, user_id: str) -> dict:
         """Coordinate with RAG service to run query and return formatted results."""
+        from ..config.hf_client import request_token_usage
+        usage_tracker = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+        token = request_token_usage.set(usage_tracker)
+        import time
+        start_time = time.time()
         # 1. Load conversation history from MongoDB
         history = {}
+        t_context = time.time()
         try:
             history = self.mongo_repo.get_history(user_id, session_id)
         except Exception as e:
@@ -82,9 +77,10 @@ class ChatController:
             history["semantic_chat_history"] = semantic_chat_history
         except Exception as e:
             print(f"[ChatController] Warning: could not load semantic chat history: {e}")
+        context_ms = (time.time() - t_context) * 1000
 
         try:
-            sql, df, error, answer, chart_config = self.rag_service.execute_rag(question, history=history)
+            sql, df, error, answer, chart_config, planner_time_ms, vector_ms, graph_ms, sql_gen_ms, sql_exec_ms, ans_gen_ms = self.rag_service.execute_rag(question, history=history)
         except Exception as exc:
             try:
                 self.mongo_repo.save_message(user_id, session_id, question, "", [])
@@ -117,6 +113,37 @@ class ChatController:
         # 4. Schedule background tasks for memory updates
         background_tasks.add_task(self._post_query_tasks, user_id, session_id, question, sql, rows, answer, history)
 
+        total_time_ms = (time.time() - start_time) * 1000 if 'start_time' in locals() else 0
+        planner_ms = planner_time_ms if 'planner_time_ms' in locals() else 0
+        v_ms = vector_ms if 'vector_ms' in locals() else 0
+        g_ms = graph_ms if 'graph_ms' in locals() else 0
+        c_ms = context_ms if 'context_ms' in locals() else 0
+        s_ms = sql_gen_ms if 'sql_gen_ms' in locals() else 0
+        e_ms = sql_exec_ms if 'sql_exec_ms' in locals() else 0
+        a_ms = ans_gen_ms if 'ans_gen_ms' in locals() else 0
+        
+        # Standard query has no "handshake" delay, so we just show the route
+        route_str = getattr(req.state, "route_str", f"POST {req.url.path}")
+        
+        box = (
+            f"\n=================================================\n"
+            f"Request Metrics\n\n"
+            f"Connection         : {route_str}\n"
+            f"Time to First Byte : N/A (Standard Request)\n"
+            f"Request Time       : {total_time_ms / 1000.0:.2f} sec\n\n"
+            f"Tokens Used        : {usage_tracker['total_tokens']} (P: {usage_tracker['prompt_tokens']}, C: {usage_tracker['completion_tokens']})\n\n"
+            f"Planner            : {int(planner_ms)} ms\n"
+            f"Context Retriever  : {int(c_ms)} ms\n"
+            f"Vector Retriever   : {int(v_ms)} ms\n"
+            f"Graph Retriever    : {int(g_ms)} ms\n"
+            f"SQL Generation     : {int(s_ms)} ms\n"
+            f"SQL Execution      : {int(e_ms)} ms\n"
+            f"Answer Generation  : {int(a_ms)} ms\n\n"
+            f"================================================="
+        )
+        import logging
+        logging.getLogger("uvicorn").info(box)
+
         return {
             "session_id": session_id,
             "question": question,
@@ -129,8 +156,32 @@ class ChatController:
             "chart_config": chart_config,
         }
 
-    def execute_query_stream(self, question: str, session_id: str, background_tasks: BackgroundTasks, user_id: str) -> Generator[str, None, None]:
+    def execute_query_stream(self, req, question: str, session_id: str, background_tasks: BackgroundTasks, user_id: str):
+        from ..config.hf_client import request_token_usage
+        import contextvars
+
+        usage_tracker = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+        ctx = contextvars.copy_context()
+        ctx.run(request_token_usage.set, usage_tracker)
+
+        class _ContextIterator:
+            def __init__(self, gen, ctx):
+                self.gen = gen
+                self.ctx = ctx
+            def __iter__(self): return self
+            def __next__(self): return self.ctx.run(self.gen.__next__)
+
+        gen = self._execute_query_stream_inner(req, question, session_id, background_tasks, user_id, usage_tracker)
+        return _ContextIterator(gen, ctx)
+
+    def _execute_query_stream_inner(self, req, question: str, session_id: str, background_tasks: BackgroundTasks, user_id: str, usage_tracker: dict) -> Generator[str, None, None]:
         """Generator that yields Server-Sent Events (SSE) representing execution progress."""
+        import time
+        import logging
+        stream_start_time = time.time()
+        logger = logging.getLogger("uvicorn")
+        
+        t_context = time.time()
         history = {}
         try:
             yield f"data: {json.dumps({'step': 'memory', 'message': 'Loading conversation history...'})}\n\n"
@@ -162,6 +213,7 @@ class ChatController:
             history["semantic_chat_history"] = [{"question": m.get("metadata", {}).get("question", ""), "answer": m.get("metadata", {}).get("answer", "")} for m in res_chat.get("matches", [])]
         except Exception as e:
             print(f"[ChatController] Warning: could not load semantic chat history: {e}")
+        context_ms = (time.time() - t_context) * 1000
 
         final_state = None
         try:
@@ -204,8 +256,64 @@ class ChatController:
                 pass
             if _is_quota_error(exc):
                 yield f"data: {json.dumps({'step': 'error', 'errorMsg': _QUOTA_DETAIL['message']})}\n\n"
+                
+                total_time_ms = (time.time() - stream_start_time) * 1000
+                planner_ms = final_state.get('planner_time_ms', 0) if final_state else 0
+                v_ms = final_state.get('vector_ms', 0) if final_state else 0
+                g_ms = final_state.get('graph_ms', 0) if final_state else 0
+                s_ms = final_state.get('sql_gen_ms', 0) if final_state else 0
+                e_ms = final_state.get('sql_exec_ms', 0) if final_state else 0
+                a_ms = final_state.get('ans_gen_ms', 0) if final_state else 0
+                route_str = getattr(req.state, "route_str", f"POST {req.url.path}")
+                handshake_ms = getattr(req.state, "handshake_ms", 0.0)
+                
+                box = (
+                    f"\n=================================================\n"
+                    f"Request Metrics\n\n"
+                    f"Connection         : {route_str}\n"
+                    f"Time to First Byte : {handshake_ms:.2f} ms\n"
+                    f"Request Time       : {total_time_ms / 1000.0:.2f} sec\n\n"
+                    f"Tokens Used        : {usage_tracker['total_tokens']} (P: {usage_tracker['prompt_tokens']}, C: {usage_tracker['completion_tokens']})\n\n"
+                    f"Planner            : {int(planner_ms)} ms\n"
+                    f"Context Retriever  : {int(context_ms)} ms\n"
+                    f"Vector Retriever   : {int(v_ms)} ms\n"
+                    f"Graph Retriever    : {int(g_ms)} ms\n"
+                    f"SQL Generation     : {int(s_ms)} ms\n"
+                    f"SQL Execution      : {int(e_ms)} ms\n"
+                    f"Answer Generation  : {int(a_ms)} ms\n\n"
+                    f"================================================="
+                )
+                logger.info(box)
                 return
+                
             yield f"data: {json.dumps({'step': 'error', 'errorMsg': f'Pipeline error: {str(exc)}'})}\n\n"
+            total_time_ms = (time.time() - stream_start_time) * 1000
+            planner_ms = final_state.get('planner_time_ms', 0) if final_state else 0
+            v_ms = final_state.get('vector_ms', 0) if final_state else 0
+            g_ms = final_state.get('graph_ms', 0) if final_state else 0
+            s_ms = final_state.get('sql_gen_ms', 0) if final_state else 0
+            e_ms = final_state.get('sql_exec_ms', 0) if final_state else 0
+            a_ms = final_state.get('ans_gen_ms', 0) if final_state else 0
+            route_str = getattr(req.state, "route_str", f"POST {req.url.path}")
+            handshake_ms = getattr(req.state, "handshake_ms", 0.0)
+            box = (
+                f"\n=================================================\n"
+                f"Request Metrics\n\n"
+                f"Connection         : {route_str}\n"
+                f"Time to First Byte : {handshake_ms:.2f} ms\n"
+                f"Request Time       : {total_time_ms / 1000.0:.2f} sec\n\n"
+                f"Tokens Used        : {usage_tracker['total_tokens']} (P: {usage_tracker['prompt_tokens']}, C: {usage_tracker['completion_tokens']})\n\n"
+                f"Planner            : {int(planner_ms)} ms\n"
+                f"Context Retriever  : {int(context_ms)} ms\n"
+                f"Vector Retriever   : {int(v_ms)} ms\n"
+                f"Graph Retriever    : {int(g_ms)} ms\n"
+                f"SQL Generation     : {int(s_ms)} ms\n"
+                f"SQL Execution      : {int(e_ms)} ms\n"
+                f"Answer Generation  : {int(a_ms)} ms\n\n"
+                f"================================================="
+            )
+            logger.info(box)
+            request_token_usage.reset(token)
             return
 
         error = final_state.get("error") or final_state.get("validation_error")
@@ -217,6 +325,33 @@ class ChatController:
             except:
                 pass
             yield f"data: {json.dumps({'step': 'error', 'last_sql': sql, 'errorMsg': f'SQL generation failed: {error[:500]}'})}\n\n"
+            total_time_ms = (time.time() - stream_start_time) * 1000
+            planner_ms = final_state.get('planner_time_ms', 0) if final_state else 0
+            v_ms = final_state.get('vector_ms', 0) if final_state else 0
+            g_ms = final_state.get('graph_ms', 0) if final_state else 0
+            s_ms = final_state.get('sql_gen_ms', 0) if final_state else 0
+            e_ms = final_state.get('sql_exec_ms', 0) if final_state else 0
+            a_ms = final_state.get('ans_gen_ms', 0) if final_state else 0
+            route_str = getattr(req.state, "route_str", f"POST {req.url.path}")
+            handshake_ms = getattr(req.state, "handshake_ms", 0.0)
+            box = (
+                f"\n=================================================\n"
+                f"Request Metrics\n\n"
+                f"Connection         : {route_str}\n"
+                f"Time to First Byte : {handshake_ms:.2f} ms\n"
+                f"Request Time       : {total_time_ms / 1000.0:.2f} sec\n\n"
+                f"Tokens Used        : {usage_tracker['total_tokens']} (P: {usage_tracker['prompt_tokens']}, C: {usage_tracker['completion_tokens']})\n\n"
+                f"Planner            : {int(planner_ms)} ms\n"
+                f"Context Retriever  : {int(context_ms)} ms\n"
+                f"Vector Retriever   : {int(v_ms)} ms\n"
+                f"Graph Retriever    : {int(g_ms)} ms\n"
+                f"SQL Generation     : {int(s_ms)} ms\n"
+                f"SQL Execution      : {int(e_ms)} ms\n"
+                f"Answer Generation  : {int(a_ms)} ms\n\n"
+                f"================================================="
+            )
+            logger.info(box)
+            request_token_usage.reset(token)
             return
             
         df = final_state.get("result")
@@ -228,6 +363,33 @@ class ChatController:
         background_tasks.add_task(self._post_query_tasks, user_id, session_id, question, sql, rows, answer, history)
 
         yield f"data: {json.dumps({'step': 'complete', 'sql': sql, 'columns': columns, 'rows': rows, 'rowCount': len(df) if df is not None else 0, 'attempts': final_state.get('attempts', 1), 'answer': answer, 'chartConfig': chart_config}, default=str)}\n\n"
+        
+        total_time_ms = (time.time() - stream_start_time) * 1000
+        planner_ms = final_state.get('planner_time_ms', 0) if final_state else 0
+        v_ms = final_state.get('vector_ms', 0) if final_state else 0
+        g_ms = final_state.get('graph_ms', 0) if final_state else 0
+        s_ms = final_state.get('sql_gen_ms', 0) if final_state else 0
+        e_ms = final_state.get('sql_exec_ms', 0) if final_state else 0
+        a_ms = final_state.get('ans_gen_ms', 0) if final_state else 0
+        route_str = getattr(req.state, "route_str", f"POST {req.url.path}")
+        handshake_ms = getattr(req.state, "handshake_ms", 0.0)
+        box = (
+            f"\n=================================================\n"
+            f"Request Metrics\n\n"
+            f"Connection         : {route_str}\n"
+            f"Time to First Byte : {handshake_ms:.2f} ms\n"
+            f"Request Time       : {total_time_ms / 1000.0:.2f} sec\n\n"
+            f"Tokens Used        : {usage_tracker['total_tokens']} (P: {usage_tracker['prompt_tokens']}, C: {usage_tracker['completion_tokens']})\n\n"
+            f"Planner            : {int(planner_ms)} ms\n"
+            f"Context Retriever  : {int(context_ms)} ms\n"
+            f"Vector Retriever   : {int(v_ms)} ms\n"
+            f"Graph Retriever    : {int(g_ms)} ms\n"
+            f"SQL Generation     : {int(s_ms)} ms\n"
+            f"SQL Execution      : {int(e_ms)} ms\n"
+            f"Answer Generation  : {int(a_ms)} ms\n\n"
+            f"================================================="
+        )
+        logger.info(box)
 
     def _post_query_tasks(self, user_id: str, session_id: str, question: str, sql: str, rows: list[dict], answer: str | None, current_history: dict):
         """Background tasks for saving messages, embedding Q&A pairs, and generating summaries."""

@@ -21,5 +21,5 @@ class HealthResponse(BaseModel):
     pinecone: str
     neo4j: str
     supabase: str
-    gemini: str
+    llm: str
     mongodb: str

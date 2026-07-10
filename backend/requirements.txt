@@ -21,9 +21,9 @@ google-generativeai==0.8.3
 
 # Agentic Orchestration
 langgraph>=0.2.56
-langchain-core>=0.3.0,<0.4
-# langchain-pinecone and langchain-huggingface are only needed for offline
-# data ingestion (Data_ingestion__to_vectorDB.py) — not required at runtime.
+langchain-huggingface>=0.0.3
+huggingface-hub>=0.23.0
+# langchain-pinecone is only needed for offline data ingestion
 
 # FastAPI / API Layer
 fastapi>=0.115.0

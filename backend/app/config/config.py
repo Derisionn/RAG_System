@@ -52,9 +52,11 @@ HF_API_URL      = f"https://router.huggingface.co/hf-inference/models/{EMBEDDING
 TOP_K_TABLES    = 5    # number of tables returned by semantic search
 TOP_K_COLUMNS   = 10   # number of columns returned by semantic search
 
-# ── LLM (Google Gemini) ───────────────────────────────────────────────────────
-GEMINI_MODEL    = "gemini-flash-latest"
-GEMINI_API_KEY  = os.environ.get("GEMINI_API_KEY", "")  # set in env
+# =============================================================================
+# Hugging Face Configuration (replaces Gemini)
+# =============================================================================
+HF_MODEL = os.getenv("HF_MODEL", "meta-llama/Meta-Llama-3-8B-Instruct")
+HUGGINGFACE_API_TOKEN = os.environ.get("HUGGINGFACE_API_TOKEN", "")  # set in env
 
 # ── Google OAuth 2.0 ──────────────────────────────────────────────────────────
 GOOGLE_CLIENT_ID     = os.getenv("GOOGLE_CLIENT_ID", "")
