@@ -157,7 +157,8 @@ Rules:
 6. Only return the raw SQL code. DO NOT wrap it in any comments or markup except the query itself.
 7. If the question refers to results from a previous query (e.g. "their", "those", "the same"), use the Conversation History above to understand the context.
 14. All schema names, table names, and column names must be fully lowercase and unquoted.
-9. CRITICAL RULE: The 'Suggested Join Relationships' show possible graph paths between tables, but you MUST NOT blindly join all tables listed in a path! ONLY join the minimum necessary tables needed to answer the question, completely ignoring any extra, irrelevant tables (like staff or store if calculating simple sales).
+9. CRITICAL RULE: The 'Suggested Join Relationships' show valid paths. You MUST use these exact paths to join tables properly. If two tables are not directly connected, you MUST `JOIN` all intermediate tables shown in the path (e.g., to join film to rental, you must join through inventory). However, completely ignore paths that are irrelevant to the user's metric.
+10. CRITICAL RULE: Primary keys are ALWAYS named `{tablename}_id` (e.g. `film_id`, `rental_id`). NEVER guess or use `.id`. Always look at the schema to find the exact column names.
 
 Question: {question}
 SQL:"""
@@ -189,7 +190,7 @@ Corrected SQL:"""
         row_count = len(df)
         
         prompt = f"""You are a helpful AI data assistant.
-A user asked a question about the AdventureWorks database. We ran a SQL query to get the answer.
+A user asked a question about the TPC-DS retail dataset. We ran a SQL query to get the answer.
 Please provide a clear, concise, and natural-sounding sentence that answers the user's question using the provided data.
 DO NOT explain how you got the data, DO NOT show the SQL, just answer the question directly as if you were talking to them.
 If there are many rows, just summarize the top results or mention the total count ({row_count} total rows).

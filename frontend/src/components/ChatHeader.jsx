@@ -5,7 +5,7 @@ export default function ChatHeader({ title, onToggleSidebar }) {
                 <button className="mobile-menu-btn" onClick={onToggleSidebar}>
                     ☰
                 </button>
-                <h2>🗄️ AdventureWorks Query Assistant</h2>
+                <h2>🗄️ TPC-DS Query Assistant</h2>
             </div>
             <span>{title && title !== 'New conversation' ? title.slice(0, 50) : 'Ask anything about your database'}</span>
         </div>

@@ -1,7 +1,7 @@
 """
 schema_extractor.py
 ────────────────────────────────────────────────────────────────────────────────
-Connects to AdventureWorks2019 on MSSQL and extracts:
+Connects to the database and extracts:
   • All tables (with the schemas listed in config.TARGET_SCHEMAS)
   • All columns per table  — name, data_type, nullable
   • Primary key columns per table
@@ -293,9 +293,9 @@ def main():
     except Exception as exc:
         print(f"\n❌  Connection failed: {exc}", file=sys.stderr)
         print("\nTroubleshooting tips:")
-        print("  • Make sure SQL Server is running and the server name in config.py is correct.")
-        print("  • Ensure ODBC Driver 17 for SQL Server is installed.")
-        print("  • Verify that AdventureWorks2019 is attached/restored.")
+        print("  • Make sure the database is running and credentials in config.py are correct.")
+        print("  • Ensure the required ODBC or Postgres drivers are installed.")
+        print("  • Verify that the TPC-DS schema is properly set up.")
         sys.exit(1)
 
     print_summary(schema)

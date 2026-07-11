@@ -155,6 +155,18 @@ export function AuthProvider({ children }) {
     return res;
   };
 
+  const [loadingMessage, setLoadingMessage] = useState('Restoring session...');
+
+  useEffect(() => {
+    let timeout;
+    if (loading) {
+      timeout = setTimeout(() => {
+        setLoadingMessage('Waking up the server (this may take up to a minute)...');
+      }, 3000);
+    }
+    return () => clearTimeout(timeout);
+  }, [loading]);
+
   if (loading) {
     return (
       <div style={{
@@ -179,7 +191,9 @@ export function AuthProvider({ children }) {
             animation: 'spin 0.8s linear infinite',
           }} />
           <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-          <p style={{ color: '#64748b', fontSize: '0.875rem', margin: 0 }}>Restoring session...</p>
+          <p style={{ color: '#64748b', fontSize: '0.875rem', margin: 0, textAlign: 'center', maxWidth: '300px' }}>
+            {loadingMessage}
+          </p>
         </div>
       </div>
     );

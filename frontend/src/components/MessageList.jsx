@@ -96,7 +96,7 @@ export default function MessageList({ messages, loading, loadingMessage, suggest
             <div className="messages-area">
                 <div className="empty-state">
                     <span className="icon">🗄️</span>
-                    <h3>Ask anything about AdventureWorks</h3>
+                    <h3>Ask anything about the TPC-DS dataset</h3>
                     <p>
                         Powered by Gemini · Pinecone · Neo4j<br />
                         Type a natural language question and get SQL + results instantly.

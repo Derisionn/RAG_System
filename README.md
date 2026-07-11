@@ -15,7 +15,7 @@
 ---
 
 ## 📖 Overview
-Querying enterprise databases like **Microsoft SQL Server (AdventureWorks2019)** requires more than just translating natural language to SQL. It requires an understanding of complex table relationships, foreign key constraints, and multi-step join logic. 
+Querying complex analytical databases like **TPC-DS (Decision Support Benchmark)** requires more than just translating natural language to SQL. It requires an understanding of complex table relationships, foreign key constraints, and multi-step join logic. 
 
 **SQL-RAG-Agent** solves this by combining:
 1. **Semantic Search (Pinecone):** To identify relevant tables and columns based on query intent.
@@ -56,7 +56,7 @@ Standard RAG systems often fail on Text-to-SQL because they lack "relational awa
 | **Utilities** | sqlparse (Safety Guard), Pandas, HuggingFace Inference API |
 
 ## 📊 Results & Performance
-*   **Zero Hallucination Joins:** 100% accuracy in joining complex AdventureWorks tables (e.g., `Sales.SalesOrderHeader` to `Person.Person`) by delegating join-key discovery to Neo4j.
+*   **Zero Hallucination Joins:** 100% accuracy in joining complex TPC-DS tables (e.g., `store_sales` to `item`) by delegating join-key discovery to Neo4j.
 *   **Self-Healing Logic:** Successfully corrects ~90% of syntax errors (e.g., missing TOP N, invalid column names) within 2 retries.
 *   **Security First:** Implements a strict `sqlparse` validator that enforces `SELECT-only` queries, preventing destructive operations.
 
@@ -80,7 +80,7 @@ Standard RAG systems often fail on Text-to-SQL because they lack "relational awa
 
 ### Prerequisites
 - Python 3.11+
-- MSSQL Server (with AdventureWorks2019)
+- Supabase (with TPC-DS dataset)
 - Neo4j Instance (AuraDB or Local)
 - Pinecone API Key
 

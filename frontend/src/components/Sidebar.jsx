@@ -7,12 +7,9 @@ export default function Sidebar({ sessions, activeId, onSelect, onNew, apiStatus
 
     return (
         <aside className={`sidebar ${isOpen ? 'open' : ''}`}>
-            <div className="sidebar-logo">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <h1>⚡ SQL RAG</h1>
-                    <button className="mobile-close-btn" onClick={onClose}>✕</button>
-                </div>
-                <p>AdventureWorks · AI Query Engine</p>
+            <div className="sidebar-header">
+                <h2>SQL RAG Agent</h2>
+                <p>TPC-DS · AI Query Engine</p>
             </div>
 
             <button className="new-chat-btn" onClick={onNew}>
