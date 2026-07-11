@@ -158,7 +158,7 @@ Rules:
 7. If the question refers to results from a previous query (e.g. "their", "those", "the same"), use the Conversation History above to understand the context.
 14. All schema names, table names, and column names must be fully lowercase and unquoted.
 9. CRITICAL RULE: The 'Suggested Join Relationships' show valid paths. You MUST use these exact paths to join tables properly. If two tables are not directly connected, you MUST `JOIN` all intermediate tables shown in the path (e.g., to join film to rental, you must join through inventory). However, completely ignore paths that are irrelevant to the user's metric.
-10. CRITICAL RULE: Primary keys are ALWAYS named `{tablename}_id` (e.g. `film_id`, `rental_id`). NEVER guess or use `.id`. Always look at the schema to find the exact column names.
+10. CRITICAL RULE: Primary keys are ALWAYS named `{{tablename}}_id` (e.g. `film_id`, `rental_id`). NEVER guess or use `.id`. Always look at the schema to find the exact column names.
 
 Question: {question}
 SQL:"""

@@ -365,7 +365,6 @@ class ChatController:
                 f"================================================="
             )
             logger.info(box)
-            request_token_usage.reset(token)
             return
 
         error = final_state.get("error") or final_state.get("validation_error")
